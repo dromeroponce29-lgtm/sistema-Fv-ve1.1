@@ -134,6 +134,54 @@ def calcular_carga_ric(req: RicRequest) -> RicResult:
     I_n = corriente_nominal(demanda_max, req.conexion, req.factor_potencia)
     empalme = tipo_empalme_sugerido(I_n, req.conexion)
 
+    # --- 4.b Balance de fases (solo si trifásico) ---
+    carga_L1 = carga_L2 = carga_L3 = 0.0
+    desbalance = 0.0
+    if req.conexion == "trifasica_380":
+        # Distribuir cargas según campo "fase" de cada CargaDedicadaCalculada
+        # Si fase=trifasica → reparte equitativamente entre L1, L2, L3
+        # Si fase=monofasica/L1/L2/L3 → asigna a esa fase específica
+        # Auto-balanceo: las "monofasicas" sin asignar van round-robin a L1/L2/L3
+        fase_ptr = 0  # contador round-robin
+        fases = ["L1", "L2", "L3"]
+        cargas_por_fase = {"L1": 0.0, "L2": 0.0, "L3": 0.0}
+        for d in dedicadas:
+            if not d.activa: continue
+            p = d.potencia_w
+            f = d.fase
+            if f == "trifasica":
+                cargas_por_fase["L1"] += p / 3
+                cargas_por_fase["L2"] += p / 3
+                cargas_por_fase["L3"] += p / 3
+            elif f in ("L1", "L2", "L3"):
+                cargas_por_fase[f] += p
+            elif f == "bifasica":
+                cargas_por_fase[fases[fase_ptr % 3]] += p / 2
+                cargas_por_fase[fases[(fase_ptr + 1) % 3]] += p / 2
+                fase_ptr += 1
+            else:  # monofasica sin asignar → round-robin
+                cargas_por_fase[fases[fase_ptr % 3]] += p
+                fase_ptr += 1
+        # Cargas por recinto: las repartimos equitativamente (asumimos balance arquitectónico)
+        for rc in recintos_carga:
+            for fase in fases:
+                cargas_por_fase[fase] += rc.subtotal_w / 3
+        carga_L1 = cargas_por_fase["L1"] * f_demanda * f_sim
+        carga_L2 = cargas_por_fase["L2"] * f_demanda * f_sim
+        carga_L3 = cargas_por_fase["L3"] * f_demanda * f_sim
+        # Desbalance: pico vs valle
+        L_max = max(carga_L1, carga_L2, carga_L3)
+        L_min = min(carga_L1, carga_L2, carga_L3)
+        desbalance = (L_max - L_min) / L_max * 100 if L_max > 0 else 0
+        if desbalance > 15:
+            advertencias.append(
+                f"Desbalance entre fases: {desbalance:.1f}% (recomendado < 15%). "
+                f"Reasignar cargas pesadas entre L1/L2/L3 para mejor balance."
+            )
+    elif req.conexion in ("monofasica_220", "bifasica_220"):
+        # En monofásico todo va al único conductor
+        carga_L1 = demanda_max
+
     # --- 5. Consumo estimado ---
     consumo_mes = round(consumo_recintos_kwh_mes + consumo_dedicadas_kwh_mes, 1)
     # Ajustar por factor de uso real (no todo está prendido siempre)
@@ -159,5 +207,12 @@ def calcular_carga_ric(req: RicRequest) -> RicResult:
         factor_potencia=req.factor_potencia,
         consumo_mensual_estimado_kwh=consumo_mes_real,
         consumo_anual_estimado_kwh=consumo_anio_real,
+        carga_L1_w=round(carga_L1, 1),
+        carga_L2_w=round(carga_L2, 1),
+        carga_L3_w=round(carga_L3, 1),
+        corriente_L1_a=round(carga_L1 / (220 * req.factor_potencia), 1) if carga_L1 > 0 else 0,
+        corriente_L2_a=round(carga_L2 / (220 * req.factor_potencia), 1) if carga_L2 > 0 else 0,
+        corriente_L3_a=round(carga_L3 / (220 * req.factor_potencia), 1) if carga_L3 > 0 else 0,
+        desbalance_fases_pct=round(desbalance, 1),
         advertencias=advertencias,
     )

@@ -24,7 +24,10 @@ class CargaDedicadaCalculada(BaseModel):
     nombre: str
     potencia_w: float
     recinto_id: Optional[int] = None
+    recinto: Optional[str] = None
     activa: bool = True
+    fase: Literal["monofasica", "bifasica", "trifasica", "L1", "L2", "L3"] = "monofasica"
+    factor_potencia: float = 0.93
 
 
 class RicRequest(BaseModel):
@@ -67,5 +70,14 @@ class RicResult(BaseModel):
     # Para el módulo FV que sigue:
     consumo_mensual_estimado_kwh: float   # Estimación según perfil de uso
     consumo_anual_estimado_kwh: float
+
+    # Balance de fases (solo aplica si conexion = trifasica_380)
+    carga_L1_w: float = 0
+    carga_L2_w: float = 0
+    carga_L3_w: float = 0
+    corriente_L1_a: float = 0
+    corriente_L2_a: float = 0
+    corriente_L3_a: float = 0
+    desbalance_fases_pct: float = 0       # |L_max - L_min| / L_max × 100
 
     advertencias: List[str] = []

@@ -40,6 +40,11 @@ class FvRequest(BaseModel):
     dias_autonomia: float = 0
     tarifa_clp_kwh: float = 220
     tipo_proyecto: str = "vivienda"           # Para escoger defaults económicos
+    # Criterios de continuidad operacional
+    cargas_criticas_pct: float = Field(0.30, ge=0, le=1, description="Fracción del consumo total que es crítica y debe respaldarse con BESS")
+    profundidad_descarga: float = Field(0.90, ge=0.5, le=1.0, description="DoD máxima de la batería (1.0 = 100%, típico LFP)")
+    eficiencia_round_trip: float = Field(0.95, ge=0.7, le=1.0, description="Eficiencia carga-descarga de la batería")
+    horas_consumo_critico_dia: float = Field(12, ge=1, le=24, description="Horas/día que las cargas críticas están activas")
 
     # Pérdidas editables (fracción 0..1)
     perdida_suciedad: float = 0.03
@@ -81,10 +86,14 @@ class FvResult(BaseModel):
     inyeccion_kwh: float
     compra_red_kwh: float
 
-    # BESS (si aplica)
+    # BESS (si aplica) — dimensionado según criterios de autonomía
     bess_modelo: Optional[str] = None
-    bess_capacidad_kwh: float = 0
+    bess_capacidad_kwh: float = 0          # Nominal del banco completo
+    bess_capacidad_util_kwh: float = 0     # Capacidad × DoD (energía realmente usable)
     bess_potencia_kw: float = 0
+    bess_dias_autonomia_real: float = 0    # Días que cubre con cargas críticas
+    bess_consumo_critico_diario_kwh: float = 0
+    bess_criterio_dimensionamiento: str = ""  # Texto explicando cómo se calculó
 
     # Compatibilidad / advertencias
     cabe_en_superficie: bool

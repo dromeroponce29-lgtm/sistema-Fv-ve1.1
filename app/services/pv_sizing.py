@@ -102,20 +102,48 @@ def calcular_fv(req: FvRequest) -> FvResult:
     if req.tipo_sistema in ("off_grid", "peak_shaving") and req.capacidad_bess_kwh == 0:
         inyeccion = 0
 
-    # 7. BESS (si aplica)
+    # 7. BESS — dimensionamiento por criterios de autonomía operacional
     bess_modelo = None
     bess_cap = req.capacidad_bess_kwh
     bess_pot = 0
-    if req.tipo_sistema in ("on_grid_bess", "off_grid", "hibrido_red", "hibrido_generador"):
-        if bess_cap == 0 and req.dias_autonomia > 0:
-            # Dimensionar batería por días de autonomía
-            cons_diario = req.consumo_anual_kwh / 365
-            bess_cap = round(cons_diario * req.dias_autonomia / 0.90, 1)  # 0.90 DoD
+    bess_util = 0
+    dias_aut_real = 0
+    cons_critico_diario = 0
+    criterio = ""
+    aplica_bess = req.tipo_sistema in ("on_grid_bess", "off_grid", "hibrido_red", "hibrido_generador")
+    if aplica_bess:
+        cons_diario_total = req.consumo_anual_kwh / 365
+        # Consumo crítico diario = total × % crítico (cargas que NO se pueden cortar)
+        cons_critico_diario = round(cons_diario_total * req.cargas_criticas_pct, 2)
+        if bess_cap == 0:
+            # Auto-dimensionar: capacidad_nominal = (E_crítico_diario × días_autonomía) / (DoD × η_RT)
+            dias = max(req.dias_autonomia, 1.0 if req.tipo_sistema == "off_grid" else 0.5)
+            bess_cap_calc = cons_critico_diario * dias / (req.profundidad_descarga * req.eficiencia_round_trip)
+            criterio = (
+                f"Capacidad = (consumo crítico {cons_critico_diario:.1f} kWh/día × {dias} días autonomía) "
+                f"/ (DoD {req.profundidad_descarga*100:.0f}% × η_RT {req.eficiencia_round_trip*100:.0f}%) "
+                f"= {bess_cap_calc:.1f} kWh nominal"
+            )
+            bess_cap = bess_cap_calc
+        else:
+            criterio = f"Capacidad indicada manualmente: {bess_cap} kWh nominal"
+        # Seleccionar batería del catálogo más cercana
         if bess_cap > 0:
             b = seleccionar_bateria(bess_cap)
-            bess_modelo = f"{b['marca']} {b['modelo']} ×{math.ceil(bess_cap / b['capacidad_kwh'])}"
-            bess_cap = math.ceil(bess_cap / b['capacidad_kwh']) * b['capacidad_kwh']
-            bess_pot = b['potencia_kw']
+            n_modulos = math.ceil(bess_cap / b['capacidad_kwh'])
+            bess_modelo = f"{b['marca']} {b['modelo']}" + (f" × {n_modulos}" if n_modulos > 1 else "")
+            bess_cap = round(n_modulos * b['capacidad_kwh'], 1)
+            bess_util = round(bess_cap * req.profundidad_descarga * req.eficiencia_round_trip, 1)
+            bess_pot = round(b['potencia_kw'] * n_modulos, 1)
+            # Días de autonomía REAL con la capacidad redondeada al catálogo
+            if cons_critico_diario > 0:
+                dias_aut_real = round(bess_util / cons_critico_diario, 2)
+            criterio += f". Catálogo: {n_modulos} × {b['marca']} {b['modelo']} ({b['capacidad_kwh']} kWh c/u). Útil real: {bess_util} kWh = {dias_aut_real} días de autonomía con cargas críticas."
+            if req.tipo_sistema == "off_grid" and dias_aut_real < 1.0:
+                advertencias.append(
+                    f"OFF-GRID con autonomía solo {dias_aut_real} días — RIESGO de corte de operación. "
+                    f"Aumentar capacidad BESS o reducir cargas críticas (actualmente {req.cargas_criticas_pct*100:.0f}% del consumo)."
+                )
 
     return FvResult(
         P_kwp=P_kwp_real,
@@ -136,7 +164,11 @@ def calcular_fv(req: FvRequest) -> FvResult:
         compra_red_kwh=round(compra, 0),
         bess_modelo=bess_modelo,
         bess_capacidad_kwh=bess_cap,
+        bess_capacidad_util_kwh=bess_util,
         bess_potencia_kw=bess_pot,
+        bess_dias_autonomia_real=dias_aut_real,
+        bess_consumo_critico_diario_kwh=cons_critico_diario,
+        bess_criterio_dimensionamiento=criterio,
         cabe_en_superficie=cabe,
         advertencias=advertencias,
     )

@@ -1736,6 +1736,7 @@ function planoSvg(pl) {
 
 function tabCargas(p) {
   const r = p.ric;
+  const esTrifasico = r.conexion === "trifasica_380";
   return `
     <div class="grid-4">
       <div class="kpi"><div class="kpi-label">Carga instalada</div><div class="kpi-value">${fmt(r.carga_total_instalada_w/1000, 1)}<small>kW</small></div></div>
@@ -1743,6 +1744,20 @@ function tabCargas(p) {
       <div class="kpi"><div class="kpi-label">Empalme sugerido</div><div class="kpi-value" style="font-size:16px;">${esc(r.tipo_empalme_sugerido)}</div><div class="kpi-foot">I_n ${r.corriente_nominal_a} A</div></div>
       <div class="kpi"><div class="kpi-label">Consumo estimado</div><div class="kpi-value">${fmt(r.consumo_anual_estimado_kwh)}<small>kWh/año</small></div><div class="kpi-foot">${fmt(r.consumo_mensual_estimado_kwh)} kWh/mes</div></div>
     </div>
+
+    ${esTrifasico && (r.carga_L1_w || r.carga_L2_w || r.carga_L3_w) ? `
+    <div class="card" style="margin-top:14px;">
+      <div class="card-title"><h3>Balance de fases</h3><span class="tag" style="background:${(r.desbalance_fases_pct||0)>15?'#ffe9e6':'#e8f5e9'}; color:${(r.desbalance_fases_pct||0)>15?'var(--err)':'var(--ok)'};">Desbalance ${fmt(r.desbalance_fases_pct||0,1)}% ${(r.desbalance_fases_pct||0)>15?'⚠':'✓'}</span></div>
+      <div class="grid-3">
+        <div class="kpi" style="border-left:3px solid #c56022;"><div class="kpi-label">Fase L1</div><div class="kpi-value">${fmt((r.carga_L1_w||0)/1000,2)}<small>kW</small></div><div class="kpi-foot">${fmt(r.corriente_L1_a||0,1)} A</div></div>
+        <div class="kpi" style="border-left:3px solid #3a73a8;"><div class="kpi-label">Fase L2</div><div class="kpi-value">${fmt((r.carga_L2_w||0)/1000,2)}<small>kW</small></div><div class="kpi-foot">${fmt(r.corriente_L2_a||0,1)} A</div></div>
+        <div class="kpi" style="border-left:3px solid #3a8348;"><div class="kpi-label">Fase L3</div><div class="kpi-value">${fmt((r.carga_L3_w||0)/1000,2)}<small>kW</small></div><div class="kpi-foot">${fmt(r.corriente_L3_a||0,1)} A</div></div>
+      </div>
+      <p style="font-size:12px; color:var(--muted); margin-top:10px; font-style:italic;">
+        Las cargas monofásicas sin fase específica se reparten automáticamente round-robin entre L1, L2 y L3 para balancear.
+        ${(r.desbalance_fases_pct||0)>15?'<br><strong style="color:var(--err);">⚠ Desbalance superior a 15%: reasignar manualmente cargas pesadas entre fases.</strong>':''}
+      </p>
+    </div>` : ""}
 
     <div class="card" style="margin-top:14px;">
       <div class="card-title"><h3>Carga por recinto (W/m² según RIC)</h3><span class="tag">${fmt(r.subtotal_recintos_w)} W</span></div>
@@ -1834,9 +1849,43 @@ function tabFv(p) {
 
     ${fv.advertencias && fv.advertencias.length ? `<div class="notice warn" style="margin-top:14px;"><strong>Advertencias:</strong><ul style="margin-top:6px; padding-left:18px;">${fv.advertencias.map(a=>`<li>${esc(a)}</li>`).join("")}</ul></div>` : ""}
 
+    ${bessAutonomiaSeccion(fv, p)}
+
     ${equiposCatalogoCards(fv, p.tipo_proyecto)}
 
     <div class="notice" style="margin-top:14px;"><strong>Modelo:</strong> PR calculado con 8 pérdidas (temperatura, suciedad, cableado DC/AC, inversor, mismatch, sombras, disponibilidad), inversor seleccionado automáticamente desde el catálogo según escala y tipo de proyecto, CAPEX desglosado en 8 partidas, flujo de caja con degradación 0,5%/año y reposición de inversor año 12. Factor de emisión SEN 2024 = 0,200 tCO₂/MWh.</div>
+  `;
+}
+
+// Sección BESS — autonomía y continuidad operacional
+function bessAutonomiaSeccion(fv, p) {
+  if (!fv.bess_capacidad_kwh || fv.bess_capacidad_kwh === 0) return "";
+  const aut = fv.bess_dias_autonomia_real || 0;
+  const colorAut = aut < 1 ? "var(--err)" : aut < 2 ? "var(--warn)" : "var(--ok)";
+  const cargaCritPct = p.ric ? ((fv.bess_consumo_critico_diario_kwh * 365) / p.ric.consumo_anual_estimado_kwh * 100) : 30;
+  return `
+    <h2 style="margin-top:28px; font-size:13px; color:var(--accent-dark); text-transform:uppercase; letter-spacing:0.06em; font-weight:700;">Almacenamiento de energía (BESS) · Continuidad operacional</h2>
+    <p style="font-size:13px; color:var(--muted); margin-top:6px; margin-bottom:12px;">
+      Sistema de baterías dimensionado según los <strong>criterios de autonomía</strong>: días que el sistema debe seguir operando sin sol o sin red, qué fracción del consumo es crítica, y los parámetros del catálogo (DoD, eficiencia round-trip).
+    </p>
+    <div class="grid-4">
+      <div class="kpi"><div class="kpi-label">Capacidad nominal</div><div class="kpi-value">${fmt(fv.bess_capacidad_kwh, 1)}<small>kWh</small></div><div class="kpi-foot">Útil: ${fmt(fv.bess_capacidad_util_kwh || fv.bess_capacidad_kwh * 0.85, 1)} kWh (después de DoD × η)</div></div>
+      <div class="kpi"><div class="kpi-label">Potencia máx descarga</div><div class="kpi-value">${fmt(fv.bess_potencia_kw, 1)}<small>kW</small></div><div class="kpi-foot">Continua / pico instantáneo</div></div>
+      <div class="kpi" style="border-left:3px solid ${colorAut};"><div class="kpi-label">Autonomía real</div><div class="kpi-value">${fmt(aut, 2)}<small>días</small></div><div class="kpi-foot">${aut < 1 ? '⚠ corte de operación' : aut < 2 ? 'mínimo aceptable' : 'continuidad asegurada'}</div></div>
+      <div class="kpi"><div class="kpi-label">Consumo crítico/día</div><div class="kpi-value">${fmt(fv.bess_consumo_critico_diario_kwh, 1)}<small>kWh</small></div><div class="kpi-foot">${fmt(cargaCritPct, 0)}% del total</div></div>
+    </div>
+    ${fv.bess_criterio_dimensionamiento ? `
+    <div class="card" style="margin-top:12px;">
+      <div class="card-title"><h3>Criterio de dimensionamiento</h3><span class="tag">${esc(fv.bess_modelo || 'BESS')}</span></div>
+      <p style="font-size:13px; line-height:1.6;">${esc(fv.bess_criterio_dimensionamiento)}</p>
+      <table class="tbl" style="margin-top:12px; font-size:12.5px;">
+        <tr><td><strong>Fórmula</strong></td><td>Capacidad = E<sub>crítica/día</sub> × días autonomía / (DoD × η<sub>RT</sub>)</td></tr>
+        <tr><td><strong>Días de autonomía</strong></td><td>Cuántos días el sistema debe operar sin sol o sin red (1 mínimo · 2-3 recomendado · 5+ industrial crítico)</td></tr>
+        <tr><td><strong>% Carga crítica</strong></td><td>Fracción del consumo que NO se puede cortar (refrigeradores, iluminación de emergencia, equipos médicos, servidores)</td></tr>
+        <tr><td><strong>Profundidad de descarga (DoD)</strong></td><td>90-100% para LFP (LiFePO4); 50% para plomo-ácido (no recomendado hoy)</td></tr>
+        <tr><td><strong>Eficiencia round-trip (η<sub>RT</sub>)</strong></td><td>95-97% para LFP modernas; reduce capacidad útil entre carga y descarga</td></tr>
+      </table>
+    </div>` : ""}
   `;
 }
 
@@ -2853,7 +2902,7 @@ function wiz4() {
       <div class="card-title"><h3>Cargas dedicadas</h3><span class="tag">${WIZ.cargas_dedicadas.length} cargas · ${totalKw.toFixed(1)} kW</span></div>
       <p style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Agrega cocina eléctrica, calefón, aire acondicionado, motores, etc. — todo lo que requiere circuito propio. <strong>Asigna cada carga a la dependencia donde se ubica</strong> (clave para distribución de tableros y trazado eléctrico).</p>
       <table class="tbl" id="ded-tbl">
-        <thead><tr><th>Carga</th><th class="num">Potencia (W)</th><th>Dependencia</th><th>Activa</th><th></th></tr></thead>
+        <thead><tr><th>Carga</th><th class="num">Potencia (W)</th><th>Dependencia</th><th>Fase</th><th>Activa</th><th></th></tr></thead>
         <tbody>
           ${WIZ.cargas_dedicadas.map((d,i) => `
             <tr>
@@ -2864,11 +2913,22 @@ function wiz4() {
                 ${recintosOpts.map(n => `<option value="${n}" ${d.recinto===n?'selected':''}>${n}</option>`).join("")}
                 <option value="__general__" ${d.recinto==='__general__'?'selected':''}>General (varios recintos)</option>
               </select></td>
+              <td><select onchange="WIZ.cargas_dedicadas[${i}].fase=this.value" style="padding:5px 8px; font-size:12px;" title="Tipo de conexión eléctrica de esta carga">
+                <option value="monofasica" ${(!d.fase||d.fase==='monofasica')?'selected':''}>1ϕ (mono)</option>
+                <option value="bifasica" ${d.fase==='bifasica'?'selected':''}>2ϕ (bif)</option>
+                <option value="trifasica" ${d.fase==='trifasica'?'selected':''}>3ϕ (tri)</option>
+                <option value="L1" ${d.fase==='L1'?'selected':''}>Solo L1</option>
+                <option value="L2" ${d.fase==='L2'?'selected':''}>Solo L2</option>
+                <option value="L3" ${d.fase==='L3'?'selected':''}>Solo L3</option>
+              </select></td>
               <td><input type="checkbox" ${d.activa?'checked':''} onchange="WIZ.cargas_dedicadas[${i}].activa=this.checked" style="width:auto;"></td>
               <td><span class="del" onclick="WIZ.cargas_dedicadas.splice(${i},1); render()" style="color:var(--err); cursor:pointer; font-size:18px;">×</span></td>
             </tr>`).join("")}
         </tbody>
       </table>
+      <p style="font-size:11px; color:var(--muted); margin-top:8px; font-style:italic;">
+        <strong>Fase:</strong> Indica cómo se conecta la carga. <strong>1ϕ</strong> = monofásica (la app la asigna automáticamente para balancear). <strong>3ϕ</strong> = trifásica balanceada (motores, chillers, ascensores). <strong>L1/L2/L3</strong> = forzar conexión a una fase específica (útil para balancear manualmente cargas pesadas).
+      </p>
       <div style="display:flex; gap:8px; margin-top:12px;">
         <button class="btn ghost sm" onclick="wizAddCarga()">＋ Agregar carga</button>
         <button class="btn ghost sm" onclick="wizCargasTipicas()">⌘ Cargas típicas según tipo</button>
@@ -3231,7 +3291,7 @@ function aplicarImportacion(tipo, data, nombreArchivo) {
   render();
 }
 function wizAddCarga() {
-  WIZ.cargas_dedicadas.push({ nombre: "Carga dedicada", potencia_w: 1500, recinto: "", activa: true });
+  WIZ.cargas_dedicadas.push({ nombre: "Carga dedicada", potencia_w: 1500, recinto: "", fase: "monofasica", activa: true });
   render();
 }
 const PLANTILLAS = {
