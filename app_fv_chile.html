@@ -474,6 +474,8 @@ const API = {
   async calcRic(req)    { return this.post("/api/ric/calc", req); },
   async designFv(req)   { return this.post("/api/fv/design", req); },
   async calcLayout(req) { return this.post("/api/layout/calc", req); },
+  async calcLayoutSobrePlano(req) { return this.post("/api/layout/sobre_plano", req); },
+  async svgDePlano(plano, recinto_id=null) { return this.post("/api/layout/svg", plano, { recinto_id: recinto_id }); },
   async downloadReport(formato, proyecto) {
     return this.postDownload(`/api/reports/${formato}`, proyecto,
       `${formato === "word" ? "memoria_tecnica" : (formato === "excel" ? "memoria_calculo" : "informe_ejecutivo")}_${proyecto.id || "proyecto"}.${formato === "excel" ? "xlsx" : formato === "word" ? "docx" : "pdf"}`);
@@ -1387,9 +1389,261 @@ function descargarUnifilarSvg(id) {
 // ========================================================================
 //  TAB LAYOUT — Disposición física de paneles sobre área disponible
 // ========================================================================
+// ========================================================================
+//  LOTE D — Layout sobre plano real del usuario
+//  Renderiza el SVG del plano parseado, permite seleccionar el recinto target,
+//  llama al backend para calcular paneles overlay y muestra el resultado.
+// ========================================================================
+function layoutSobrePlanoCard(p) {
+  const plano = p.plano;
+  if (!plano || !plano.recintos) return "";
+
+  // Recinto seleccionado actualmente (persistido en el proyecto)
+  const targetId = (p.layout_plano && p.layout_plano.recinto_id) || null;
+  // Resultado del último cálculo
+  const result = p.layout_plano && p.layout_plano.resultado ? p.layout_plano.resultado : null;
+
+  // Sugerencia automática: recintos con uso "exterior", "logia", "azotea" o el más grande
+  const candidatos = plano.recintos
+    .map(r => ({ ...r, score: (r.uso === "exterior" || r.uso === "logia" ? 10 : 0) + r.area_m2 / 10 }))
+    .sort((a, b) => b.score - a.score);
+  const sugerido = candidatos[0]?.id;
+
+  const opcionesRecintos = plano.recintos.map(r => `
+    <label style="display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid ${targetId===r.id ? 'var(--accent-dark)' : 'var(--border)'}; border-radius:8px; cursor:pointer; background:${targetId===r.id ? '#faf6ee' : 'white'};">
+      <input type="radio" name="lote-d-recinto-${p.id}" value="${r.id}" ${targetId===r.id ? 'checked' : ''} onchange="seleccionarRecintoLayout('${p.id}', ${r.id})">
+      <div style="flex:1;">
+        <div style="font-weight:600; font-size:13px;">${esc(r.nombre)} <span style="font-weight:400; color:var(--muted); font-size:11.5px;">· ${esc(r.uso)}</span></div>
+        <div style="font-size:11.5px; color:var(--muted);">${fmt(r.area_m2,1)} m² · ${r.vertices.length} vértices</div>
+      </div>
+      ${r.id === sugerido ? '<span style="font-size:10px; background:var(--accent); color:white; padding:2px 6px; border-radius:4px;">sugerido</span>' : ''}
+    </label>
+  `).join("");
+
+  const paramsHtml = `
+    <div class="row" style="margin-bottom:10px;">
+      <div class="field"><label>Tipo de montaje</label>
+        <select id="ld-tipo-${p.id}">
+          <option value="techo_plano">Techo plano (inclinado con estructura)</option>
+          <option value="techo_inclinado">Techo inclinado coplanar</option>
+          <option value="suelo">Suelo</option>
+          <option value="carport">Carport</option>
+        </select>
+      </div>
+      <div class="field"><label>Orientación panel</label>
+        <select id="ld-orient-${p.id}">
+          <option value="portrait">Portrait (vertical)</option>
+          <option value="landscape">Landscape (horizontal)</option>
+        </select>
+      </div>
+      <div class="field"><label>Inclinación (°)</label><input type="number" id="ld-inclin-${p.id}" value="30" min="0" max="60" step="1"></div>
+      <div class="field"><label>Retiro perimetral (m)</label><input type="number" id="ld-retiro-${p.id}" value="0.5" min="0" step="0.1"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Pasillo cada N filas (0 = sin pasillo)</label><input type="number" id="ld-paso-${p.id}" value="0" min="0" step="1"></div>
+      <div class="field"><label>Ancho pasillo (m)</label><input type="number" id="ld-anchopaso-${p.id}" value="0.8" min="0" step="0.1"></div>
+      <div class="field"><label>Máx. paneles (0 = sin límite)</label><input type="number" id="ld-max-${p.id}" value="0" min="0" step="1"></div>
+      <div class="field"><label>Latitud (°)</label><input type="number" id="ld-lat-${p.id}" value="${p.sitio ? p.sitio.lat : -33.4}" step="0.001"></div>
+    </div>
+  `;
+
+  // KPIs del último cálculo
+  const kpis = result ? `
+    <div class="grid-4" style="margin-top:14px;">
+      <div class="kpi"><div class="kpi-label">Paneles dispuestos</div><div class="kpi-value">${result.disposicion.n_paneles}<small>en ${result.disposicion.n_filas} filas</small></div><div class="kpi-foot">${fmt(result.disposicion.P_kwp_real,1)} kWp reales</div></div>
+      <div class="kpi"><div class="kpi-label">Pitch entre filas</div><div class="kpi-value">${fmt(result.disposicion.pitch_m,2)}<small>m</small></div><div class="kpi-foot">Calculado por latitud</div></div>
+      <div class="kpi"><div class="kpi-label">Aprovechamiento</div><div class="kpi-value">${fmt(result.disposicion.aprovechamiento_pct,0)}<small>%</small></div><div class="kpi-foot">${fmt(result.disposicion.area_util_m2,1)} m² útiles</div></div>
+      <div class="kpi"><div class="kpi-label">Recinto target</div><div class="kpi-value" style="font-size:14px;">${esc(result.recinto_nombre)}</div><div class="kpi-foot">${fmt(result.recinto_area_m2,1)} m² brutos</div></div>
+    </div>
+  ` : "";
+
+  // SVG renderizado (plano + paneles si hay)
+  const svgEmbed = result ? result.svg :
+    "<div style='padding:30px; text-align:center; color:var(--muted); font-size:13px;'>Selecciona el recinto y presiona <strong>Calcular paneles sobre este recinto</strong>.</div>";
+
+  const advertencias = result && result.disposicion.advertencias && result.disposicion.advertencias.length ? `
+    <div class="notice warn" style="margin-top:14px;"><strong>Advertencias del packing:</strong>
+      <ul style="margin-top:6px; padding-left:18px;">${result.disposicion.advertencias.map(a=>`<li>${esc(a)}</li>`).join("")}</ul>
+    </div>` : "";
+
+  return `
+    <div class="card" style="margin-bottom:14px; border:2px solid var(--accent-dark);">
+      <div class="card-title">
+        <h3>🏠 Layout sobre tu plano real</h3>
+        <span class="tag">Lote D · v1.8 · ${plano.formato.toUpperCase()}</span>
+      </div>
+      <p style="font-size:13.5px; color:var(--muted); margin-bottom:12px;">
+        Tu plano fue procesado con éxito: <strong>${plano.n_recintos} recintos · ${fmt(plano.area_total_m2,1)} m² totales</strong>.
+        Marca abajo cuál es el recinto donde irán los paneles (techo, azotea, terraza, terreno) y la herramienta
+        calculará la disposición física sobre la geometría real de tu plano, no sobre un rectángulo abstracto.
+      </p>
+
+      <div style="display:grid; grid-template-columns:1fr 2fr; gap:14px; align-items:flex-start;">
+        <div>
+          <strong style="display:block; margin-bottom:8px; font-size:13px;">1. Elige la zona técnica:</strong>
+          <div style="display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; padding-right:4px;">
+            ${opcionesRecintos}
+          </div>
+
+          <strong style="display:block; margin:14px 0 8px; font-size:13px;">2. Parámetros del packing:</strong>
+          ${paramsHtml}
+
+          <button class="btn" style="width:100%; margin-top:8px;" onclick="calcularLayoutSobrePlano('${p.id}')">↻ Calcular paneles sobre este recinto</button>
+        </div>
+
+        <div>
+          <strong style="display:block; margin-bottom:8px; font-size:13px;">Vista del plano${result ? ' + paneles overlay' : ''}:</strong>
+          <div id="ld-svg-container-${p.id}" style="background:#fdfbf5; border-radius:8px; padding:8px;">
+            ${svgEmbed}
+          </div>
+          ${result ? `
+            <div style="font-size:11.5px; color:var(--muted); margin-top:8px; display:flex; gap:18px; flex-wrap:wrap;">
+              <span><span style="display:inline-block; width:10px; height:10px; background:#1E4A7A; vertical-align:middle; margin-right:4px;"></span> Paneles FV</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#E89923; vertical-align:middle; margin-right:4px;"></span> Zona técnica seleccionada</span>
+              <span>Grid = 1 m</span>
+            </div>
+          ` : ""}
+        </div>
+      </div>
+
+      ${kpis}
+      ${advertencias}
+
+      ${result ? `
+        <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border); display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <button class="btn ghost" onclick="aplicarLayoutAProyecto('${p.id}')">✓ Aplicar este layout al proyecto (usarlo en reporte y predim. FV)</button>
+          <button class="btn ghost" onclick="exportarSvgLayout('${p.id}')">↓ Descargar SVG</button>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function seleccionarRecintoLayout(projectId, recintoId) {
+  const p = projectById(projectId);
+  if (!p) return;
+  p.layout_plano = p.layout_plano || {};
+  p.layout_plano.recinto_id = recintoId;
+  // Limpiar resultado previo si se cambia el recinto
+  delete p.layout_plano.resultado;
+  if (!p.esDemo) {
+    const arr = loadUserProjects();
+    const idx = arr.findIndex(x => x.id === projectId);
+    if (idx >= 0) { arr[idx] = p; saveUserProjects(arr); }
+  }
+}
+
+async function calcularLayoutSobrePlano(projectId) {
+  const p = projectById(projectId);
+  if (!p || !p.plano) { alert("No hay plano parseado en este proyecto."); return; }
+  if (!API.status.conectado) { alert("Esta función requiere backend conectado."); return; }
+
+  // Tomar selección (o sugerencia)
+  let recintoId = p.layout_plano && p.layout_plano.recinto_id;
+  if (!recintoId) {
+    const candidatos = p.plano.recintos
+      .map(r => ({ ...r, score: (r.uso === "exterior" || r.uso === "logia" ? 10 : 0) + r.area_m2 / 10 }))
+      .sort((a, b) => b.score - a.score);
+    recintoId = candidatos[0]?.id;
+    if (!recintoId) { alert("Selecciona un recinto target."); return; }
+  }
+
+  // Leer parámetros del UI
+  const tipo    = document.getElementById(`ld-tipo-${projectId}`).value;
+  const orient  = document.getElementById(`ld-orient-${projectId}`).value;
+  const inclin  = parseFloat(document.getElementById(`ld-inclin-${projectId}`).value) || 30;
+  const retiro  = parseFloat(document.getElementById(`ld-retiro-${projectId}`).value) || 0.5;
+  const paso    = parseInt(document.getElementById(`ld-paso-${projectId}`).value) || 0;
+  const apaso   = parseFloat(document.getElementById(`ld-anchopaso-${projectId}`).value) || 0.8;
+  const maxp    = parseInt(document.getElementById(`ld-max-${projectId}`).value) || 0;
+  const lat     = parseFloat(document.getElementById(`ld-lat-${projectId}`).value) || -33.4;
+
+  // Indicador visual
+  const cont = document.getElementById(`ld-svg-container-${projectId}`);
+  if (cont) cont.innerHTML = '<div style="padding:60px; text-align:center; color:var(--muted);">⏳ Calculando disposición…</div>';
+
+  try {
+    const req = {
+      plano: p.plano,
+      recinto_id: recintoId,
+      panel_largo_m: 2.28, panel_ancho_m: 1.13, panel_Pnom_w: 550,
+      inclinacion_paneles_deg: inclin, latitud_deg: lat,
+      orientacion: orient, tipo_montaje: tipo,
+      retiro_perimetral_m: retiro, pasillo_cada_n_filas: paso,
+      ancho_pasillo_m: apaso, max_paneles: maxp,
+      obstaculos: [],
+      mostrar_grid: true, mostrar_etiquetas: true,
+    };
+    const res = await API.calcLayoutSobrePlano(req);
+
+    // Persistir
+    p.layout_plano = { recinto_id: recintoId, parametros: req, resultado: res };
+    if (!p.esDemo) {
+      const arr = loadUserProjects();
+      const idx = arr.findIndex(x => x.id === projectId);
+      if (idx >= 0) { arr[idx] = p; saveUserProjects(arr); }
+    }
+
+    // Re-render
+    render();
+  } catch (e) {
+    if (cont) cont.innerHTML = `<div class="notice warn" style="margin:0;">Error: ${esc(e.message)}</div>`;
+    alert("Error calculando layout: " + e.message);
+  }
+}
+
+function aplicarLayoutAProyecto(projectId) {
+  const p = projectById(projectId);
+  if (!p || !p.layout_plano || !p.layout_plano.resultado) return;
+  const r = p.layout_plano.resultado;
+  // Convertir DisposicionFV → estructura del campo p.layout existente
+  const recinto = p.plano.recintos.find(x => x.id === p.layout_plano.recinto_id);
+  p.layout = {
+    area: {
+      nombre: r.recinto_nombre,
+      poligono: recinto ? recinto.vertices : [],
+      obstaculos: [],
+      tipo_montaje: p.layout_plano.parametros.tipo_montaje,
+      retiro_perimetral_m: p.layout_plano.parametros.retiro_perimetral_m,
+    },
+    panel_largo_m: 2.28, panel_ancho_m: 1.13,
+    n_paneles: r.disposicion.n_paneles,
+    n_filas: r.disposicion.n_filas,
+    pitch_m: r.disposicion.pitch_m,
+    P_kwp_real: r.disposicion.P_kwp_real,
+    area_util_m2: r.disposicion.area_util_m2,
+    aprovechamiento_pct: r.disposicion.aprovechamiento_pct,
+    tipo_montaje: p.layout_plano.parametros.tipo_montaje,
+    paneles_xy: r.disposicion.paneles.map(pn => [pn.x, pn.y]),
+    advertencias: r.disposicion.advertencias,
+  };
+  if (!p.esDemo) {
+    const arr = loadUserProjects();
+    const idx = arr.findIndex(x => x.id === projectId);
+    if (idx >= 0) { arr[idx] = p; saveUserProjects(arr); }
+  }
+  alert(`✓ Layout aplicado: ${r.disposicion.n_paneles} paneles · ${fmt(r.disposicion.P_kwp_real,1)} kWp instalables. Ya se refleja en el predimensionamiento FV y en los reportes.`);
+  render();
+}
+
+function exportarSvgLayout(projectId) {
+  const p = projectById(projectId);
+  if (!p || !p.layout_plano || !p.layout_plano.resultado) return;
+  const svg = p.layout_plano.resultado.svg;
+  const blob = new Blob([svg], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `layout_${p.id}.svg`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function tabLayout(p) {
+  // LOTE D: si hay un plano parseado, mostrar el card de "Layout sobre plano real"
+  const cardLoteD = (p.plano && !p.esDemo) ? layoutSobrePlanoCard(p) : "";
+
   if (!p.layout) {
-    return `
+    return cardLoteD + `
       <div class="card">
         <div class="card-title"><h3>Cargar planimetría del techo o terreno</h3><span class="tag">DXF · PDF</span></div>
         <p style="font-size:13.5px; color:var(--muted); margin-bottom:14px;">Sube el plano arquitectónico del techo o terreno donde se instalarán los paneles. La herramienta calculará la disposición a estaca considerando retiros perimetrales, obstáculos (sala de máquinas, antenas, ductos) y pitch entre filas según latitud del sitio.</p>
@@ -1432,7 +1686,7 @@ function tabLayout(p) {
     suelo: "Montaje en suelo",
     carport: "Carport",
   }[L.tipo_montaje] || L.tipo_montaje;
-  return `
+  return cardLoteD + `
     <div class="grid-4">
       <div class="kpi"><div class="kpi-label">Tipo de montaje</div><div class="kpi-value" style="font-size:14px;">${tipoMontajeLabel}</div><div class="kpi-foot">${L.area.nombre || 'Área disponible'}</div></div>
       <div class="kpi"><div class="kpi-label">Paneles dispuestos</div><div class="kpi-value">${L.n_paneles}<small>en ${L.n_filas} filas</small></div><div class="kpi-foot">${fmt(L.P_kwp_real, 1)} kWp reales instalables</div></div>
@@ -2353,6 +2607,16 @@ async function handleLayoutFile(evt, projectId) {
         ${res.advertencias && res.advertencias.length ? `<br><span style="font-size:11.5px; color:var(--warn);">⚠ ${res.advertencias.length} advertencias del parser</span>` : ""}
       </div>`;
       sessionStorage.setItem("plano-parsed-" + projectId, JSON.stringify(res));
+      // LOTE D: persistir el plano parseado en el proyecto del usuario
+      const proyUser = projectById(projectId);
+      if (proyUser && !proyUser.esDemo) {
+        proyUser.plano = res;
+        const arr = loadUserProjects();
+        const idx = arr.findIndex(x => x.id === projectId);
+        if (idx >= 0) { arr[idx] = proyUser; saveUserProjects(arr); }
+        // Re-render para mostrar el card "Layout sobre plano real"
+        setTimeout(() => render(), 400);
+      }
     } catch (e) {
       info.innerHTML = `<div style="text-align:left; background:#ffe9e6; border:1px solid var(--err); border-radius:8px; padding:10px 14px;">
         <strong>✗ Error en el parser:</strong> ${esc(e.message)}<br>
