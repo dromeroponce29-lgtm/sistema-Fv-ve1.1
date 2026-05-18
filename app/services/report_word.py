@@ -20,6 +20,8 @@ from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.oxml.ns import qn, nsmap
 from docx.oxml import OxmlElement
 
+from app.services.report_sections import seccion_incluida
+
 
 ORANGE = RGBColor(0xC5, 0x60, 0x22)
 ORANGE_DARK = RGBColor(0x8C, 0x3F, 0x12)
@@ -146,6 +148,7 @@ def generar_word(proyecto: dict, salida: Path | str) -> Path:
     n_pan = fv.get("N_paneles", 0)
     es_pmgd = p_kwp > 300
     requiere_te1 = True
+    inc = lambda k: seccion_incluida(proyecto, k)
 
     doc = Document()
 
@@ -228,22 +231,23 @@ def generar_word(proyecto: dict, salida: Path | str) -> Path:
        "que efectuará el instalador eléctrico autorizado.")
 
     # ===== 2. DESCRIPCIÓN DEL PROYECTO =====
-    _add_heading(doc, "2. Descripción del Proyecto", level=1)
-    _p(doc, f"Se proyecta la instalación de un sistema solar fotovoltaico de "
-       f"{p_kwp:.2f} kWp de potencia nominal, compuesto por {n_pan} paneles "
-       f"monocristalinos de 550 Wp, montados sobre estructura inclinada con orientación "
-       f"al norte y ángulo óptimo determinado para la latitud del sitio. El sistema operará "
-       f"en modalidad de autoconsumo con inyección de excedentes a la red de la empresa "
-       f"distribuidora local, conforme al marco regulatorio del netbilling chileno.")
-    _spacer(doc, 4)
-    _p(doc, f"El sistema generará una energía anual estimada de "
-       f"{fv.get('generacion_anual_kwh', 0):,.0f} kWh".replace(",", "."), bold=True)
-    _p(doc, f"cubriendo aproximadamente el {fv.get('cobertura_real', 0)*100:.0f}% del consumo "
-       f"anual estimado del inmueble ({ric['consumo_anual_estimado_kwh']:,.0f} kWh/año), "
-       f"y reduciendo las emisiones de gases de efecto invernadero en "
-       f"{eco.get('CO2_evitado_anual_kg', 0)/1000:.2f} tCO2 por año, "
-       f"considerando el factor de emisión del Sistema Eléctrico Nacional de "
-       f"0,200 tCO2/MWh publicado por el Coordinador Eléctrico Nacional.".replace(",", "."))
+    if inc("resumen_ejecutivo"):
+        _add_heading(doc, "2. Descripción del Proyecto", level=1)
+        _p(doc, f"Se proyecta la instalación de un sistema solar fotovoltaico de "
+           f"{p_kwp:.2f} kWp de potencia nominal, compuesto por {n_pan} paneles "
+           f"monocristalinos de 550 Wp, montados sobre estructura inclinada con orientación "
+           f"al norte y ángulo óptimo determinado para la latitud del sitio. El sistema operará "
+           f"en modalidad de autoconsumo con inyección de excedentes a la red de la empresa "
+           f"distribuidora local, conforme al marco regulatorio del netbilling chileno.")
+        _spacer(doc, 4)
+        _p(doc, f"El sistema generará una energía anual estimada de "
+           f"{fv.get('generacion_anual_kwh', 0):,.0f} kWh".replace(",", "."), bold=True)
+        _p(doc, f"cubriendo aproximadamente el {fv.get('cobertura_real', 0)*100:.0f}% del consumo "
+           f"anual estimado del inmueble ({ric['consumo_anual_estimado_kwh']:,.0f} kWh/año), "
+           f"y reduciendo las emisiones de gases de efecto invernadero en "
+           f"{eco.get('CO2_evitado_anual_kg', 0)/1000:.2f} tCO2 por año, "
+           f"considerando el factor de emisión del Sistema Eléctrico Nacional de "
+           f"0,200 tCO2/MWh publicado por el Coordinador Eléctrico Nacional.".replace(",", "."))
 
     # ===== 3. CARACTERIZACIÓN DEL SITIO =====
     _add_heading(doc, "3. Caracterización del Sitio y Recurso Solar", level=1)

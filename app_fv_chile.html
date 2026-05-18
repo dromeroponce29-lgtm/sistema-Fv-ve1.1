@@ -2046,19 +2046,162 @@ function calcFvCompleto(p) {
   return { fv, eco };
 }
 
+// ========================================================================
+//  CATÁLOGO DE SECCIONES PARA REPORTE PERSONALIZADO (Lote C)
+//  Sincronizado con app/services/report_sections.py
+// ========================================================================
+const SECCIONES_REPORTE = [
+  { grupo: "1. Identificación", items: [
+    { key: "portada_kpis",         label: "Portada con KPIs principales",                     desc: "Bloque destacado con kWp, cobertura, ahorro, payback, CO2." },
+    { key: "resumen_ejecutivo",    label: "Resumen narrativo ejecutivo",                      desc: "Texto en lenguaje claro para el cliente final." },
+  ]},
+  { grupo: "2. Sitio y consumo", items: [
+    { key: "sitio",                label: "Sitio y recurso solar",                            desc: "Ubicación, coordenadas, irradiación PVGIS y NASA POWER." },
+    { key: "consumo",              label: "Cargas RIC y consumo",                             desc: "Recintos, cargas dedicadas, factor demanda, simultaneidad." },
+    { key: "balance_fases",        label: "Balance de fases (L1/L2/L3)",                      desc: "Sólo aplica si el sistema es trifásico." },
+  ]},
+  { grupo: "3. Diseño FV y eléctrico", items: [
+    { key: "fv_dimensionamiento",  label: "Dimensionamiento FV",                              desc: "Potencia, N° paneles, inversor, pérdidas técnicas." },
+    { key: "generacion_grafica",   label: "Gráfico generación vs consumo mensual",            desc: "Barras de generación + línea de consumo, 12 meses." },
+    { key: "bess",                 label: "Sistema de baterías (BESS)",                       desc: "Capacidad útil, autonomía real, criterio de dimensionamiento." },
+    { key: "respaldo",             label: "Respaldo y conexión a red",                        desc: "On-grid / off-grid, generador diésel o empalme." },
+    { key: "layout",               label: "Layout y disposición de paneles",                  desc: "Aprovechamiento de superficie, pitch, retiros." },
+    { key: "unifilar",             label: "Diagrama unifilar",                                desc: "Protecciones DC/AC, SPD, medidor bidireccional." },
+    { key: "puesta_tierra",        label: "Puesta a tierra",                                  desc: "Malla, resistencia objetivo, equipotencialización." },
+  ]},
+  { grupo: "4. Análisis económico", items: [
+    { key: "capex",                label: "Desglose CAPEX por partida",                       desc: "Paneles, inversor, estructura, BoS, instalación, trámites." },
+    { key: "flujo_caja",           label: "Flujo de caja 25 años",                            desc: "Gráfico y tabla acumulada con degradación." },
+    { key: "metricas_economicas",  label: "Métricas (VAN, TIR, payback, LCOE)",               desc: "Indicadores de rentabilidad financiera." },
+    { key: "presupuesto_equipos",  label: "Presupuesto detallado con specs de equipos",       desc: "BOM con catálogo de equipos chilenos cotizables." },
+  ]},
+  { grupo: "5. Impacto y cumplimiento", items: [
+    { key: "co2_ambiental",        label: "Reducción de CO₂",                                 desc: "Toneladas evitadas, factor SEN 0,200 tCO₂/MWh." },
+    { key: "normativa",            label: "Cumplimiento normativo",                           desc: "Ley 21.118, RIC SEC, TE-1, categoría netbilling." },
+    { key: "advertencias",         label: "Advertencias y disclaimers",                       desc: "Limitaciones del predimensionamiento, fuentes." },
+  ]},
+];
+
+const PRESETS_REPORTE = {
+  cliente_final: {
+    label: "Cliente final", icon: "👔",
+    desc: "Lenguaje ejecutivo y visual. Sin tecnicismos eléctricos detallados.",
+    secciones: ["portada_kpis","resumen_ejecutivo","fv_dimensionamiento","generacion_grafica","layout","capex","metricas_economicas","co2_ambiental","normativa","advertencias"],
+  },
+  tecnico_sec: {
+    label: "Técnico SEC", icon: "🔧",
+    desc: "Documento completo para acompañar la declaración TE-1 al instalador autorizado.",
+    secciones: ["portada_kpis","resumen_ejecutivo","sitio","consumo","balance_fases","fv_dimensionamiento","generacion_grafica","bess","respaldo","layout","unifilar","puesta_tierra","capex","flujo_caja","metricas_economicas","normativa","advertencias"],
+  },
+  presupuesto_comercial: {
+    label: "Presupuesto comercial", icon: "💰",
+    desc: "Para licitaciones o cotizaciones: foco en BOM, CAPEX y rentabilidad.",
+    secciones: ["portada_kpis","resumen_ejecutivo","fv_dimensionamiento","bess","respaldo","presupuesto_equipos","capex","metricas_economicas","flujo_caja","advertencias"],
+  },
+};
+
+const LS_SECCIONES = "fv-chile-reporte-secciones-v1";
+function loadSeccionesSel(projectId) {
+  try {
+    const all = JSON.parse(localStorage.getItem(LS_SECCIONES) || "{}");
+    return all[projectId] || null;  // null = todo incluido (default)
+  } catch { return null; }
+}
+function saveSeccionesSel(projectId, arr) {
+  try {
+    const all = JSON.parse(localStorage.getItem(LS_SECCIONES) || "{}");
+    all[projectId] = arr;
+    localStorage.setItem(LS_SECCIONES, JSON.stringify(all));
+  } catch (e) { console.warn("No se pudo persistir selección:", e); }
+}
+
 function tabReporte(p) {
   const isDemo = p.esDemo === true;
   const pid = p.id.replace("demo-", "");
   const backendOk = API.status.conectado;
   let estado;
   if (isDemo) {
-    estado = `<div class="notice" style="background:#e8f5e9; border-left-color:#3a8348; color:#1f5e2c; margin-bottom:14px;"><strong>✓ Reportes pre-generados.</strong> Los 3 archivos están en disco. Descarga directa abajo.</div>`;
+    estado = `<div class="notice" style="background:#e8f5e9; border-left-color:#3a8348; color:#1f5e2c; margin-bottom:14px;"><strong>✓ Reportes pre-generados.</strong> Los demos usan archivos en disco. La personalización abajo aplica sólo a proyectos creados por el usuario.</div>`;
   } else if (backendOk) {
-    estado = `<div class="notice" style="background:#e8f5e9; border-left-color:#3a8348; color:#1f5e2c; margin-bottom:14px;"><strong>✓ Backend conectado.</strong> Los botones generan los reportes en vivo desde el motor Python y los descargan automáticamente.</div>`;
+    estado = `<div class="notice" style="background:#e8f5e9; border-left-color:#3a8348; color:#1f5e2c; margin-bottom:14px;"><strong>✓ Backend conectado.</strong> Marca abajo qué secciones incluir y genera los reportes filtrados según tu selección.</div>`;
   } else {
     estado = `<div class="notice warn" style="margin-bottom:14px;"><strong>Modo local sin backend.</strong> El JSON está disponible para descarga. Para generar XLSX/DOCX/PDF, conecta un backend FastAPI en <a href="#/config">Configuración</a>.</div>`;
   }
-  return estado + (() => {
+
+  // === Selector jerárquico de secciones (Lote C) ===
+  const seleccionActual = loadSeccionesSel(p.id);
+  const todasLasKeys = SECCIONES_REPORTE.flatMap(g => g.items.map(it => it.key));
+  // Si no hay selección guardada, todo marcado por defecto
+  const marcadas = new Set(seleccionActual || todasLasKeys);
+
+  const presetsHtml = Object.entries(PRESETS_REPORTE).map(([k, v]) => `
+    <button class="btn ghost" type="button" style="text-align:left; padding:10px 12px; height:auto; line-height:1.35;" onclick="aplicarPreset('${p.id}','${k}')">
+      <div style="font-size:18px; margin-bottom:2px;">${v.icon} <strong>${v.label}</strong> <span style="font-size:11px; color:var(--muted); font-weight:400;">(${v.secciones.length} secs)</span></div>
+      <div style="font-size:11.5px; color:var(--muted); font-weight:400;">${v.desc}</div>
+    </button>
+  `).join("");
+
+  const gruposHtml = SECCIONES_REPORTE.map((g, gi) => {
+    const itemsHtml = g.items.map(it => `
+      <label style="display:flex; gap:8px; padding:7px 8px; border-radius:6px; cursor:pointer; align-items:flex-start;" onmouseenter="this.style.background='#faf6ee'" onmouseleave="this.style.background='transparent'">
+        <input type="checkbox" class="sec-chk" data-key="${it.key}" ${marcadas.has(it.key) ? "checked" : ""} onchange="onSeccionToggle('${p.id}')" style="margin-top:2px;">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:13px; font-weight:500;">${it.label}</div>
+          <div style="font-size:11.5px; color:var(--muted); line-height:1.35;">${it.desc}</div>
+        </div>
+      </label>
+    `).join("");
+    return `
+      <div style="margin-bottom:10px; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+        <div style="background:#faf6ee; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleGrupoSec(this)">
+          <strong style="font-size:13.5px; color:var(--accent-dark);">${g.grupo}</strong>
+          <button class="btn ghost" type="button" style="font-size:11px; padding:3px 8px; height:auto;" onclick="event.stopPropagation(); toggleGrupoAll('${p.id}', ${gi})">Marcar/desmarcar grupo</button>
+        </div>
+        <div style="padding:6px 8px;">${itemsHtml}</div>
+      </div>`;
+  }).join("");
+
+  const contadorId = `cont-secs-${p.id.replace(/[^a-z0-9]/gi,'')}`;
+
+  const selectorPersonalizado = isDemo ? "" : `
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title">
+        <h3>📋 Reporte personalizado</h3>
+        <span class="tag">Lote C · v1.7</span>
+      </div>
+      <p style="font-size:13.5px; color:var(--muted); margin-bottom:14px;">
+        Marca qué secciones incluir en cada documento. Los <strong>presets</strong> de abajo configuran selecciones típicas en un clic. Tu selección se guarda automáticamente por proyecto.
+      </p>
+
+      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:18px;">
+        ${presetsHtml}
+      </div>
+
+      <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <strong>Selección actual: <span id="${contadorId}" style="color:var(--accent-dark);">${marcadas.size}/${todasLasKeys.length}</span> secciones</strong>
+        <div style="display:flex; gap:8px;">
+          <button class="btn ghost" type="button" style="font-size:12px; padding:5px 10px; height:auto;" onclick="marcarTodas('${p.id}')">✓ Todas</button>
+          <button class="btn ghost" type="button" style="font-size:12px; padding:5px 10px; height:auto;" onclick="desmarcarTodas('${p.id}')">✗ Ninguna</button>
+        </div>
+      </div>
+
+      ${gruposHtml}
+
+      <div style="margin-top:18px; padding-top:14px; border-top:1px dashed var(--border);">
+        <strong style="display:block; margin-bottom:8px;">Generar documentos con la selección actual:</strong>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          ${backendOk
+            ? `<button class="btn" onclick="generarReportePersonalizado('${p.id}','pdf')">↓ PDF cliente personalizado</button>
+               <button class="btn ghost" onclick="generarReportePersonalizado('${p.id}','word')">↓ DOCX memoria técnica</button>
+               <button class="btn ghost" onclick="generarReportePersonalizado('${p.id}','excel')">↓ XLSX memoria de cálculo</button>`
+            : `<button class="btn ghost" disabled>Requiere backend conectado</button>`}
+        </div>
+        <p style="font-size:11.5px; color:var(--muted); margin-top:8px;">Las secciones no marcadas se omiten en el documento generado (donde sea aplicable; la Memoria Técnica SEC mantiene siempre el cuerpo normativo mínimo).</p>
+      </div>
+    </div>
+  `;
+
+  return estado + selectorPersonalizado + (() => {
   return `
     <div class="grid-3">
       <div class="card">
@@ -2101,6 +2244,81 @@ function tabReporte(p) {
 
     <div class="notice" style="margin-top:14px;"><strong>Próximos pasos para emitir a SEC:</strong> el predimensionamiento debe complementarse con esquema unifilar firmado, planos as-built de la instalación, certificados de equipos homologados SEC, y declaración TE-1 firmada por instalador eléctrico autorizado clase A, B, C o D según potencia y tensión.</div>
   `;})();
+}
+
+// ========================================================================
+//  HANDLERS DEL REPORTE PERSONALIZADO (Lote C)
+// ========================================================================
+function _getKeysFromUI() {
+  const chks = document.querySelectorAll(".sec-chk");
+  const sel = [];
+  chks.forEach(c => { if (c.checked) sel.push(c.dataset.key); });
+  return sel;
+}
+function _setKeysInUI(keysSet) {
+  document.querySelectorAll(".sec-chk").forEach(c => {
+    c.checked = keysSet.has(c.dataset.key);
+  });
+}
+function _refreshContador(projectId) {
+  const sel = _getKeysFromUI();
+  const total = SECCIONES_REPORTE.flatMap(g => g.items).length;
+  const el = document.getElementById(`cont-secs-${projectId.replace(/[^a-z0-9]/gi,'')}`);
+  if (el) el.textContent = `${sel.length}/${total}`;
+}
+function onSeccionToggle(projectId) {
+  const sel = _getKeysFromUI();
+  saveSeccionesSel(projectId, sel);
+  _refreshContador(projectId);
+}
+function aplicarPreset(projectId, presetKey) {
+  const preset = PRESETS_REPORTE[presetKey];
+  if (!preset) return;
+  const keysSet = new Set(preset.secciones);
+  _setKeysInUI(keysSet);
+  saveSeccionesSel(projectId, [...keysSet]);
+  _refreshContador(projectId);
+}
+function marcarTodas(projectId) {
+  const todas = SECCIONES_REPORTE.flatMap(g => g.items.map(it => it.key));
+  _setKeysInUI(new Set(todas));
+  saveSeccionesSel(projectId, todas);
+  _refreshContador(projectId);
+}
+function desmarcarTodas(projectId) {
+  _setKeysInUI(new Set());
+  saveSeccionesSel(projectId, []);
+  _refreshContador(projectId);
+}
+function toggleGrupoSec(headerEl) {
+  // Toggle visibilidad del grupo (futuro colapso). Sin acción por ahora.
+}
+function toggleGrupoAll(projectId, grupoIdx) {
+  const grupo = SECCIONES_REPORTE[grupoIdx];
+  if (!grupo) return;
+  const sel = new Set(_getKeysFromUI());
+  const keysGrupo = grupo.items.map(it => it.key);
+  const todasMarcadas = keysGrupo.every(k => sel.has(k));
+  keysGrupo.forEach(k => { todasMarcadas ? sel.delete(k) : sel.add(k); });
+  _setKeysInUI(sel);
+  saveSeccionesSel(projectId, [...sel]);
+  _refreshContador(projectId);
+}
+
+async function generarReportePersonalizado(projectId, formato) {
+  const p = projectById(projectId);
+  if (!p) { alert("Proyecto no encontrado"); return; }
+  const secciones = loadSeccionesSel(projectId) || SECCIONES_REPORTE.flatMap(g => g.items.map(it => it.key));
+  if (secciones.length === 0) {
+    if (!confirm("No hay secciones marcadas. El documento saldrá prácticamente vacío. ¿Continuar?")) return;
+  }
+  // Adjuntamos la selección al proyecto antes de enviar al backend
+  const payload = { ...p, secciones_incluidas: secciones };
+  try {
+    await API.downloadReport(formato, payload);
+  } catch (e) {
+    alert("Error al generar reporte personalizado: " + e.message);
+  }
 }
 
 function descargarJsonProyecto(id) {

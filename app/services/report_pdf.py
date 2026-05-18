@@ -18,6 +18,7 @@ from reportlab.platypus import (
     KeepTogether,
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from app.services.report_sections import seccion_incluida
 
 ORANGE = colors.HexColor("#C56022")
 ORANGE_DARK = colors.HexColor("#8C3F12")
@@ -117,6 +118,7 @@ def generar_pdf(proyecto: dict, salida: Path | str) -> Path:
     eco = proyecto.get("eco", {})
     ric = proyecto["ric"]
     s = proyecto["sitio"]
+    inc = lambda k: seccion_incluida(proyecto, k)
 
     doc = SimpleDocTemplate(
         str(salida), pagesize=letter,
@@ -126,7 +128,7 @@ def generar_pdf(proyecto: dict, salida: Path | str) -> Path:
     sty = _styles()
     story = []
 
-    # === PORTADA ===
+    # === PORTADA === (siempre incluida, es identificación básica)
     story.append(Paragraph("INFORME EJECUTIVO", sty["EYE"]))
     story.append(Paragraph("Sistema Solar Fotovoltaico", sty["TITLE2"]))
     story.append(Paragraph(proyecto["nombre"], sty["H2X"]))
@@ -150,60 +152,63 @@ def generar_pdf(proyecto: dict, salida: Path | str) -> Path:
         ["Reducción CO2", f"{eco.get('CO2_evitado_anual_kg',0)/1000:.1f} tCO2/año",
          "Total 25 años", f"{eco.get('CO2_evitado_total_kg',0)/1000:.0f} tCO2"],
     ]
-    story.append(_kpi_table(rows))
-    story.append(Spacer(1, 0.4*cm))
+    if inc("portada_kpis"):
+        story.append(_kpi_table(rows))
+        story.append(Spacer(1, 0.4*cm))
 
     # Resumen narrativo
-    story.append(Paragraph("Resumen", sty["H2X"]))
-    inv = fv.get("inversor_modelo", "—")
-    story.append(Paragraph(
-        f"Se propone un sistema fotovoltaico de <b>{fv.get('P_kwp','—')} kWp</b> compuesto por "
-        f"<b>{fv.get('N_paneles','—')} paneles de 550 W</b> sobre una superficie de "
-        f"<b>{fv.get('superficie_m2','—')} m²</b>, con inversor <b>{inv}</b>. "
-        f"El sistema cubrirá aproximadamente el <b>{cob_pct:.0f}%</b> del consumo anual estimado "
-        f"({ric['consumo_anual_estimado_kwh']:,.0f} kWh/año).".replace(",", "."), sty["BODY"]))
-    if eco:
-        van_clp = eco.get("VAN_clp", 0)
-        signo = "viable" if van_clp > 0 else "no recupera la inversión"
+    if inc("resumen_ejecutivo"):
+        story.append(Paragraph("Resumen", sty["H2X"]))
+        inv = fv.get("inversor_modelo", "—")
         story.append(Paragraph(
-            f"El análisis económico a 25 años entrega un VAN de <b>{_clp(van_clp)}</b> a tasa "
-            f"{eco['tasa_descuento']*100:.0f}%, lo que indica que el proyecto es <b>{signo}</b>. "
-            f"El payback simple es de <b>{pay:.1f} años</b>, equivalente a una TIR de "
-            f"<b>{eco.get('TIR_pct','—')}%</b>. La energía generada tiene un costo nivelado (LCOE) "
-            f"de <b>{eco['LCOE_clp_kwh']:,.0f} CLP/kWh</b>.".replace(",", "."), sty["BODY"]))
+            f"Se propone un sistema fotovoltaico de <b>{fv.get('P_kwp','—')} kWp</b> compuesto por "
+            f"<b>{fv.get('N_paneles','—')} paneles de 550 W</b> sobre una superficie de "
+            f"<b>{fv.get('superficie_m2','—')} m²</b>, con inversor <b>{inv}</b>. "
+            f"El sistema cubrirá aproximadamente el <b>{cob_pct:.0f}%</b> del consumo anual estimado "
+            f"({ric['consumo_anual_estimado_kwh']:,.0f} kWh/año).".replace(",", "."), sty["BODY"]))
+        if eco:
+            van_clp = eco.get("VAN_clp", 0)
+            signo = "viable" if van_clp > 0 else "no recupera la inversión"
+            story.append(Paragraph(
+                f"El análisis económico a 25 años entrega un VAN de <b>{_clp(van_clp)}</b> a tasa "
+                f"{eco['tasa_descuento']*100:.0f}%, lo que indica que el proyecto es <b>{signo}</b>. "
+                f"El payback simple es de <b>{pay:.1f} años</b>, equivalente a una TIR de "
+                f"<b>{eco.get('TIR_pct','—')}%</b>. La energía generada tiene un costo nivelado (LCOE) "
+                f"de <b>{eco['LCOE_clp_kwh']:,.0f} CLP/kWh</b>.".replace(",", "."), sty["BODY"]))
 
     story.append(PageBreak())
 
     # === PÁGINA 2 — Detalles técnicos + gráficos ===
-    story.append(Paragraph("Sitio y recurso solar", sty["H2X"]))
-    sitio_data = [
-        ["Ubicación", f"{s['nombre']}, {s['region']}"],
-        ["Coordenadas", f"{s['lat']:.4f}, {s['lon']:.4f}"],
-        ["Altitud", f"{s.get('altitud_msnm','—')} msnm"],
-        ["Inclinación óptima", f"{s['pvgis']['slope']}°"],
-        ["Azimut óptimo", f"{s['pvgis']['azimuth']}° (norte)"],
-        ["Generación por kWp (PVGIS)", f"{s['pvgis']['E_y']:,.0f} kWh/kWp/año".replace(",", ".")],
-        ["Temperatura ambiente promedio", f"{s['nasa']['t2m_avg']:.1f} °C"],
-    ]
-    t = Table(sitio_data, colWidths=[6*cm, 11.5*cm])
-    t.setStyle(TableStyle([
-        ("FONT", (0,0), (0,-1), "Helvetica-Bold", 9),
-        ("FONT", (1,0), (1,-1), "Helvetica", 9),
-        ("TEXTCOLOR", (0,0), (0,-1), GRAY),
-        ("LINEBELOW", (0,0), (-1,-1), 0.4, colors.HexColor("#E6E2D8")),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-        ("TOPPADDING", (0,0), (-1,-1), 5),
-    ]))
-    story.append(t)
-    story.append(Spacer(1, 0.4*cm))
+    if inc("sitio"):
+        story.append(Paragraph("Sitio y recurso solar", sty["H2X"]))
+        sitio_data = [
+            ["Ubicación", f"{s['nombre']}, {s['region']}"],
+            ["Coordenadas", f"{s['lat']:.4f}, {s['lon']:.4f}"],
+            ["Altitud", f"{s.get('altitud_msnm','—')} msnm"],
+            ["Inclinación óptima", f"{s['pvgis']['slope']}°"],
+            ["Azimut óptimo", f"{s['pvgis']['azimuth']}° (norte)"],
+            ["Generación por kWp (PVGIS)", f"{s['pvgis']['E_y']:,.0f} kWh/kWp/año".replace(",", ".")],
+            ["Temperatura ambiente promedio", f"{s['nasa']['t2m_avg']:.1f} °C"],
+        ]
+        t = Table(sitio_data, colWidths=[6*cm, 11.5*cm])
+        t.setStyle(TableStyle([
+            ("FONT", (0,0), (0,-1), "Helvetica-Bold", 9),
+            ("FONT", (1,0), (1,-1), "Helvetica", 9),
+            ("TEXTCOLOR", (0,0), (0,-1), GRAY),
+            ("LINEBELOW", (0,0), (-1,-1), 0.4, colors.HexColor("#E6E2D8")),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+            ("TOPPADDING", (0,0), (-1,-1), 5),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 0.4*cm))
 
-    if fv:
+    if fv and inc("generacion_grafica"):
         story.append(Paragraph("Generación esperada (kWh/mes)", sty["H2X"]))
         img_gen = _chart_generacion(fv, ric["consumo_mensual_estimado_kwh"])
         story.append(Image(img_gen, width=17.5*cm, height=7*cm))
         story.append(Spacer(1, 0.3*cm))
 
-    if eco:
+    if eco and inc("flujo_caja"):
         story.append(Paragraph("Flujo de caja acumulado (25 años)", sty["H2X"]))
         img_flujo = _chart_flujo(eco)
         story.append(Image(img_flujo, width=17.5*cm, height=7*cm))
@@ -211,7 +216,7 @@ def generar_pdf(proyecto: dict, salida: Path | str) -> Path:
     story.append(PageBreak())
 
     # === PÁGINA 3 — Desglose CAPEX + Normativo ===
-    if eco:
+    if eco and inc("capex"):
         story.append(Paragraph("Desglose de inversión (CAPEX)", sty["H2X"]))
         rows = [["Partida", "CLP", "% del total"]]
         for k, v in eco["capex_desglose"].items():
@@ -234,28 +239,30 @@ def generar_pdf(proyecto: dict, salida: Path | str) -> Path:
         story.append(t)
         story.append(Spacer(1, 0.5*cm))
 
-    story.append(Paragraph("Cumplimiento normativo", sty["H2X"]))
-    P_kwp = fv.get("P_kwp", 0)
-    categoria_nb = "BT1 ≤ 20 kW — Netbilling con compra obligatoria" if P_kwp <= 20 else \
-                   ("Netbilling estándar (20-300 kW)" if P_kwp <= 300 else "PMGD (> 300 kW)")
-    story.append(Paragraph(
-        f"<b>Categoría:</b> {categoria_nb}.<br/>"
-        "<b>Marco legal:</b> Ley 21.118 de Generación Distribuida (Netbilling) — "
-        "permite inyectar excedentes a la red al precio del componente de energía.<br/>"
-        "<b>Norma técnica:</b> Pliegos RIC vigentes de la SEC para el dimensionamiento "
-        "de circuitos interiores, protecciones y conductores.<br/>"
-        "<b>Declaración:</b> requiere TE-1 firmada por instalador eléctrico autorizado "
-        "(clase A/B/C/D según potencia) y aprobación de la empresa distribuidora.", sty["BODY"]))
+    if inc("normativa"):
+        story.append(Paragraph("Cumplimiento normativo", sty["H2X"]))
+        P_kwp = fv.get("P_kwp", 0)
+        categoria_nb = "BT1 ≤ 20 kW — Netbilling con compra obligatoria" if P_kwp <= 20 else \
+                       ("Netbilling estándar (20-300 kW)" if P_kwp <= 300 else "PMGD (> 300 kW)")
+        story.append(Paragraph(
+            f"<b>Categoría:</b> {categoria_nb}.<br/>"
+            "<b>Marco legal:</b> Ley 21.118 de Generación Distribuida (Netbilling) — "
+            "permite inyectar excedentes a la red al precio del componente de energía.<br/>"
+            "<b>Norma técnica:</b> Pliegos RIC vigentes de la SEC para el dimensionamiento "
+            "de circuitos interiores, protecciones y conductores.<br/>"
+            "<b>Declaración:</b> requiere TE-1 firmada por instalador eléctrico autorizado "
+            "(clase A/B/C/D según potencia) y aprobación de la empresa distribuidora.", sty["BODY"]))
+        story.append(Spacer(1, 0.5*cm))
 
-    story.append(Spacer(1, 0.5*cm))
-    story.append(Paragraph("Advertencias", sty["H2X"]))
-    story.append(Paragraph(
-        "Este informe constituye un <b>predimensionamiento técnico-comercial</b>; no reemplaza "
-        "el proyecto eléctrico de detalle ni los planos as-built requeridos por la SEC. Los datos "
-        "de recurso solar provienen de PVGIS v5.3 (Joint Research Centre) y NASA POWER, con "
-        "incertidumbre típica de ±5% anual. Los costos referenciales deben actualizarse por "
-        "cotización al inicio del proyecto. El factor de emisión SEN utilizado para el cálculo "
-        "de CO2 evitado es 0,200 tCO2/MWh (Coordinador Eléctrico Nacional, 2024).", sty["BODY"]))
+    if inc("advertencias"):
+        story.append(Paragraph("Advertencias", sty["H2X"]))
+        story.append(Paragraph(
+            "Este informe constituye un <b>predimensionamiento técnico-comercial</b>; no reemplaza "
+            "el proyecto eléctrico de detalle ni los planos as-built requeridos por la SEC. Los datos "
+            "de recurso solar provienen de PVGIS v5.3 (Joint Research Centre) y NASA POWER, con "
+            "incertidumbre típica de ±5% anual. Los costos referenciales deben actualizarse por "
+            "cotización al inicio del proyecto. El factor de emisión SEN utilizado para el cálculo "
+            "de CO2 evitado es 0,200 tCO2/MWh (Coordinador Eléctrico Nacional, 2024).", sty["BODY"]))
 
     story.append(Spacer(1, 0.5*cm))
     story.append(Paragraph(
