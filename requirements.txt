@@ -1,0 +1,34 @@
+# =====================================================================
+# Dependencias mínimas para deploy en Render free (512 MB RAM)
+# Para OCR de PDFs escaneados + OpenCV, usar requirements-full.txt
+# =====================================================================
+
+# --- Backend FastAPI ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+pydantic-settings==2.5.2
+httpx==0.27.2
+python-multipart==0.0.12
+
+# --- Cálculo FV y meteorología ---
+pvlib==0.11.0
+numpy==2.1.1
+pandas==2.2.3
+scipy==1.14.1
+
+# --- Procesamiento de planos ---
+ezdxf==1.3.4              # DXF (AutoCAD)
+pdfplumber==0.11.4        # PDF vectorial
+pypdf==5.0.1              # Lectura general PDF
+shapely==2.0.6            # Geometría de polígonos
+
+# --- Persistencia (opcional) ---
+sqlalchemy==2.0.35
+aiosqlite==0.20.0
+
+# --- Reportería ---
+openpyxl==3.1.5           # Memoria de cálculo Excel
+python-docx==1.1.2        # Memoria técnica Word
+reportlab==4.2.5          # PDF profesional
+matplotlib==3.9.2         # Gráficos para reportes PDF

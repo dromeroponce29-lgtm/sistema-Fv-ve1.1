@@ -1,0 +1,17 @@
+services:
+  fv-chile:
+    build: .
+    container_name: fv-chile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistir reportes y proyectos generados en el host
+      - ./reportes:/app/reportes
+      # Hot-reload del código en desarrollo (comentar en prod)
+      - ./app:/app/app:ro
+      - ./app_fv_chile.html:/app/app_fv_chile.html:ro
+    environment:
+      - APP_NAME=SistemasFV-Chile
+      - CONTACT_EMAIL=dromeroponce29@gmail.com
+      - HEMISPHERE=SOUTH
+    restart: unless-stopped

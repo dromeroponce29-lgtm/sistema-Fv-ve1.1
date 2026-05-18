@@ -1,0 +1,171 @@
+{
+  "archivo": "plano-departamento-tipo.dxf",
+  "formato": "dxf",
+  "unidad_origen": "mm",
+  "factor_a_metros": 0.001,
+  "recintos": [
+    {
+      "id": 1,
+      "nombre": "Living / Comedor",
+      "uso": "living",
+      "area_m2": 22.5,
+      "perimetro_m": 19.0,
+      "centroide": [
+        2.5,
+        2.25
+      ],
+      "vertices": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          5.0,
+          0.0
+        ],
+        [
+          5.0,
+          4.5
+        ],
+        [
+          0.0,
+          4.5
+        ]
+      ],
+      "layer_origen": "LIVING-COMEDOR",
+      "fuente_nombre": "texto_dentro"
+    },
+    {
+      "id": 2,
+      "nombre": "Cocina",
+      "uso": "cocina",
+      "area_m2": 10.5,
+      "perimetro_m": 13.0,
+      "centroide": [
+        6.75,
+        1.5
+      ],
+      "vertices": [
+        [
+          5.0,
+          0.0
+        ],
+        [
+          8.5,
+          0.0
+        ],
+        [
+          8.5,
+          3.0
+        ],
+        [
+          5.0,
+          3.0
+        ]
+      ],
+      "layer_origen": "COCINA",
+      "fuente_nombre": "texto_dentro"
+    },
+    {
+      "id": 3,
+      "nombre": "Baño",
+      "uso": "bano",
+      "area_m2": 3.0,
+      "perimetro_m": 7.0,
+      "centroide": [
+        6.0,
+        3.75
+      ],
+      "vertices": [
+        [
+          5.0,
+          3.0
+        ],
+        [
+          7.0,
+          3.0
+        ],
+        [
+          7.0,
+          4.5
+        ],
+        [
+          5.0,
+          4.5
+        ]
+      ],
+      "layer_origen": "BANO",
+      "fuente_nombre": "texto_dentro"
+    },
+    {
+      "id": 4,
+      "nombre": "Dormitorio 1",
+      "uso": "dormitorio",
+      "area_m2": 13.5,
+      "perimetro_m": 15.0,
+      "centroide": [
+        2.25,
+        6.0
+      ],
+      "vertices": [
+        [
+          0.0,
+          4.5
+        ],
+        [
+          4.5,
+          4.5
+        ],
+        [
+          4.5,
+          7.5
+        ],
+        [
+          0.0,
+          7.5
+        ]
+      ],
+      "layer_origen": "DORMITORIO-1",
+      "fuente_nombre": "texto_dentro"
+    },
+    {
+      "id": 5,
+      "nombre": "Dormitorio 2",
+      "uso": "dormitorio",
+      "area_m2": 12.0,
+      "perimetro_m": 14.0,
+      "centroide": [
+        6.5,
+        6.0
+      ],
+      "vertices": [
+        [
+          4.5,
+          4.5
+        ],
+        [
+          8.5,
+          4.5
+        ],
+        [
+          8.5,
+          7.5
+        ],
+        [
+          4.5,
+          7.5
+        ]
+      ],
+      "layer_origen": "DORMITORIO-2",
+      "fuente_nombre": "texto_dentro"
+    }
+  ],
+  "area_total_m2": 61.5,
+  "n_recintos": 5,
+  "advertencias": [],
+  "metadatos": {
+    "dxf_version": "AC1024",
+    "n_layers": 8,
+    "insunits_codigo": 4
+  }
+}

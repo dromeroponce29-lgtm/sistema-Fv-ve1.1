@@ -1,0 +1,42 @@
+# ════════════════════════════════════════════════════════════════════════
+#   Render.com — Infrastructure as Code
+#   Despliega el backend FastAPI + sirve la app web HTML en una sola URL
+#
+#   Pasos:
+#     1. Sube este repo a GitHub
+#     2. En Render: New + → Blueprint → Conecta tu repo
+#     3. Render detecta este render.yaml automáticamente
+#     4. Confirma y espera ~5 minutos al primer build
+#     5. Tu app queda en https://fv-chile.onrender.com
+# ════════════════════════════════════════════════════════════════════════
+
+services:
+  - type: web
+    name: fv-chile
+    runtime: python
+    plan: free                       # 750 hrs/mes gratis, se duerme tras 15min sin uso
+    region: oregon                   # Más cercano a Chile sin paid plan
+    branch: main
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true                 # Cada push a main redeploya
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.10
+      - key: APP_NAME
+        value: SistemasFV-Chile
+      - key: APP_VERSION
+        value: 1.0.0-beta
+      - key: CONTACT_EMAIL
+        value: dromeroponce29@gmail.com
+      - key: HEMISPHERE
+        value: SOUTH
+      - key: HTTP_TIMEOUT
+        value: "30"
+      - key: DEFAULT_COUNTRY
+        value: Chile
+      - key: DEFAULT_TIMEZONE
+        value: America/Santiago

@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+~$*
+
+# IDE
+.idea/
+.vscode/api-tests.http
+*.swp
+*.swo
+
+# Variables de entorno (secretos)
+.env
+.env.local
+.env.production
+
+# Reportes generados dinámicamente (los demos se mantienen)
+reportes/*_user-*.xlsx
+reportes/*_user-*.docx
+reportes/*_user-*.pdf
+
+# Bases de datos locales
+*.db
+*.sqlite
+*.sqlite3
+sistemas_fv.db
+
+# Logs
+*.log
+/tmp/
+
+# Carpeta vieja del prototipo
+_legacy/
+
+# Tests outputs
+/test_output/
+htmlcov/
+.coverage

@@ -1,0 +1,51 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🚀 Arrancar backend (uvicorn)",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/uvicorn",
+      "args": ["app.main:app", "--reload", "--port", "8000"],
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": {
+        "owner": "uvicorn",
+        "pattern": [{ "regexp": "^.*$", "file": 1, "line": 2, "column": 3, "message": 4 }],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^.*Started server process",
+          "endsPattern": "^.*Application startup complete"
+        }
+      },
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "🏗️ Crear entorno virtual",
+      "type": "shell",
+      "command": "python3",
+      "args": ["-m", "venv", ".venv"],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "📦 Instalar dependencias",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/pip",
+      "args": ["install", "-r", "requirements.txt"],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "🌐 Abrir app en navegador",
+      "type": "shell",
+      "command": "open",
+      "args": ["http://localhost:8000/"],
+      "presentation": { "reveal": "silent", "panel": "shared" }
+    },
+    {
+      "label": "🐳 Docker Compose Up",
+      "type": "shell",
+      "command": "docker",
+      "args": ["compose", "up"],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    }
+  ]
+}

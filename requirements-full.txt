@@ -1,0 +1,12 @@
+# =====================================================================
+# Dependencias COMPLETAS — para desarrollo local con OCR
+# Incluye TODO requirements.txt + paquetes pesados para OCR escaneados
+# Requiere Tesseract a nivel sistema (brew install tesseract en macOS)
+# NO usar en Render free (excede 512 MB RAM)
+# =====================================================================
+
+-r requirements.txt
+
+# OCR de PDFs escaneados
+ocrmypdf==16.4.3          # Requiere tesseract a nivel sistema
+opencv-python==4.10.0.84  # Vectorización de imágenes (~100 MB)

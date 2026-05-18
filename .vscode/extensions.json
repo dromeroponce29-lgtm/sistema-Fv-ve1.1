@@ -1,0 +1,16 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    "ms-python.black-formatter",
+    "charliermarsh.ruff",
+    "ecmel.vscode-html-css",
+    "ritwickdey.LiveServer",
+    "humao.rest-client",
+    "mikestead.dotenv",
+    "yzhang.markdown-all-in-one",
+    "redhat.vscode-yaml",
+    "ms-azuretools.vscode-docker"
+  ]
+}

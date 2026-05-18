@@ -1,0 +1,37 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.typeCheckingMode": "basic",
+  "[python]": { "editor.tabSize": 4 },
+  "[html]": { "editor.tabSize": 2 },
+  "[javascript]": { "editor.tabSize": 2 },
+  "[json]": { "editor.tabSize": 2 },
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/*.pyc": true,
+    "**/.DS_Store": true,
+    "_legacy/**": true,
+    "**/~$*": true
+  },
+  "search.exclude": {
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "**/_legacy": true,
+    "**/reportes/*.xlsx": true,
+    "**/reportes/*.pdf": true,
+    "**/reportes/*.docx": true
+  },
+  "files.associations": {
+    "*.dxf": "plaintext",
+    "Iniciar FV Chile.command": "shellscript"
+  },
+  "workbench.colorCustomizations": {
+    "activityBar.background": "#2a261d",
+    "activityBar.foreground": "#f5e6d8",
+    "titleBar.activeBackground": "#c56022",
+    "titleBar.activeForeground": "#ffffff",
+    "statusBar.background": "#8c3f12",
+    "statusBar.foreground": "#ffffff"
+  }
+}
