@@ -145,6 +145,12 @@ def calcular_fv(req: FvRequest) -> FvResult:
                     f"Aumentar capacidad BESS o reducir cargas críticas (actualmente {req.cargas_criticas_pct*100:.0f}% del consumo)."
                 )
 
+    # 8. Dimensionar respaldo (generador / empalme) según conexion a red y tipo
+    respaldo = _dimensionar_respaldo(req, demanda_max_kw=req.demanda_maxima_kw, P_kwp=P_kwp_real,
+                                     bess_capacidad_util_kwh=bess_util,
+                                     cons_critico_diario_kwh=cons_critico_diario,
+                                     advertencias=advertencias)
+
     return FvResult(
         P_kwp=P_kwp_real,
         N_paneles=N_pan,
@@ -169,6 +175,122 @@ def calcular_fv(req: FvRequest) -> FvResult:
         bess_dias_autonomia_real=dias_aut_real,
         bess_consumo_critico_diario_kwh=cons_critico_diario,
         bess_criterio_dimensionamiento=criterio,
+        conectado_red=req.conectado_red,
+        tipo_respaldo=req.tipo_respaldo,
+        respaldo_potencia_kw=respaldo["potencia_kw"],
+        respaldo_descripcion=respaldo["descripcion"],
+        respaldo_criterio=respaldo["criterio"],
+        empalme_recomendado=respaldo["empalme"],
+        respaldo_capex_usd=respaldo["capex_usd"],
+        respaldo_opex_mensual_clp=respaldo["opex_clp_mes"],
         cabe_en_superficie=cabe,
         advertencias=advertencias,
     )
+
+
+def _dimensionar_respaldo(req, demanda_max_kw: float, P_kwp: float,
+                          bess_capacidad_util_kwh: float, cons_critico_diario_kwh: float,
+                          advertencias: list[str]) -> dict:
+    """Dimensiona la potencia del respaldo (generador diesel, empalme normal o reducido).
+
+    Reglas:
+      • OFF-GRID puro (sin respaldo): la generación FV + BESS debe cubrir todo el consumo.
+        Si autonomía < 1 día → advertencia crítica.
+      • GENERADOR DIESEL: P_gen = max(demanda_max × 1.25, P_críticas × 1.5)
+        para arrancar motores y cubrir picos. CAPEX ~600 USD/kW. Combustible 0.27 L/kWh.
+      • EMPALME REDUCIDO (con FV, ahorra capacidad): P_empalme = demanda_max − P_FV × 0.6
+        (asumiendo que el FV contribuye al menos 60% en horario pico).
+      • EMPALME COMPLETO: P_empalme = demanda_max (netbilling estándar).
+    """
+    factor = req.factor_seguridad_respaldo
+    fs = factor if factor >= 1.0 else 1.25
+    P_kwp_contrib = P_kwp * 0.6  # contribución FV en horario pico (estimación)
+
+    if not req.conectado_red:  # Off-grid
+        if req.tipo_respaldo == "generador_diesel":
+            # Generador para cubrir demanda crítica cuando BESS no alcanza
+            cons_critico_horario_kw = cons_critico_diario_kwh / req.horas_consumo_critico_dia
+            P_gen = max(demanda_max_kw * fs, cons_critico_horario_kw * 1.5)
+            # Escala a tamaños comerciales: 5, 10, 15, 20, 30, 50, 75, 100, 150 kVA (factor 0.8 → kW)
+            escala_kva = [5, 10, 15, 20, 30, 50, 75, 100, 150, 200, 250, 350, 500]
+            P_kva = next((k for k in escala_kva if k * 0.8 >= P_gen), 500)
+            P_kw_gen = round(P_kva * 0.8, 1)
+            capex_usd = round(P_kva * 550)  # ~$550 USD/kVA
+            # OPEX: combustible × horas/mes × consumo_específico × precio diesel
+            l_por_kwh = 0.27
+            kwh_mes_gen = P_kw_gen * 0.7 * req.horas_uso_generador_mes  # 70% de carga típica
+            litros_mes = kwh_mes_gen * l_por_kwh
+            precio_diesel_clp = 1280
+            opex_clp = round(litros_mes * precio_diesel_clp + capex_usd * 0.02 * 950 / 12)
+            if cons_critico_diario_kwh > 0 and bess_capacidad_util_kwh < cons_critico_diario_kwh * 0.5:
+                advertencias.append(
+                    f"OFF-GRID + generador: BESS ({bess_capacidad_util_kwh:.1f} kWh útil) cubre menos del "
+                    f"50% del consumo crítico diario. El generador se usará frecuentemente."
+                )
+            return {
+                "potencia_kw": P_kw_gen,
+                "descripcion": f"Generador diesel {P_kva} kVA ({P_kw_gen} kW), uso estimado {req.horas_uso_generador_mes:.0f} hrs/mes",
+                "criterio": (f"P_gen = max(demanda_máx {demanda_max_kw:.1f} × FS {fs}, "
+                             f"P_crítica/h {cons_critico_horario_kw:.1f} × 1.5) = {P_gen:.1f} kW. "
+                             f"Escalado al tamaño comercial siguiente: {P_kva} kVA."),
+                "empalme": "Sin empalme (off-grid puro + generador)",
+                "capex_usd": capex_usd,
+                "opex_clp_mes": opex_clp,
+            }
+        else:  # off-grid puro sin generador
+            return {
+                "potencia_kw": 0, "descripcion": "Sin respaldo eléctrico — operación 100% solar + BESS",
+                "criterio": "Off-grid sin respaldo. Toda la demanda crítica debe cubrirse con BESS.",
+                "empalme": "Sin empalme (off-grid puro)", "capex_usd": 0, "opex_clp_mes": 0,
+            }
+
+    # ON-GRID: empalme + posibilidad de respaldo extra
+    if req.tipo_respaldo == "empalme_reducido":
+        # FV contribuye en horario pico → empalme puede ser menor
+        P_empalme_kw = max(demanda_max_kw - P_kwp_contrib, demanda_max_kw * 0.5)
+        # Ahorro vs empalme completo (cargo fijo distribuidora)
+        ahorro_cargo_fijo_clp = round((demanda_max_kw - P_empalme_kw) * 12 * 1100)  # ~$1100/kW-mes
+        empalme = _texto_empalme(P_empalme_kw, demanda_max_kw)
+        return {
+            "potencia_kw": round(P_empalme_kw, 2),
+            "descripcion": f"Empalme reducido {empalme}, ahorra ~${ahorro_cargo_fijo_clp:,} CLP/año en cargo fijo",
+            "criterio": (f"P_empalme = max(demanda_máx {demanda_max_kw:.1f} − P_FV×0.6 ({P_kwp_contrib:.1f}), "
+                         f"demanda_máx×0.5) = {P_empalme_kw:.1f} kW. El FV cubre el pico de demanda."),
+            "empalme": empalme,
+            "capex_usd": round(P_empalme_kw * 80),  # ahorro ~$80/kW vs empalme completo
+            "opex_clp_mes": -round(ahorro_cargo_fijo_clp / 12),  # negativo = ahorro
+        }
+    elif req.tipo_respaldo == "generador_diesel":
+        # On-grid + generador de respaldo (raro, solo industria crítica)
+        cons_critico_horario_kw = cons_critico_diario_kwh / req.horas_consumo_critico_dia if req.horas_consumo_critico_dia else 0
+        P_gen = max(cons_critico_horario_kw * 1.5, 10)
+        escala_kva = [10, 15, 20, 30, 50, 75, 100, 150, 200]
+        P_kva = next((k for k in escala_kva if k * 0.8 >= P_gen), 200)
+        return {
+            "potencia_kw": round(P_kva * 0.8, 1),
+            "descripcion": f"On-grid con generador de emergencia {P_kva} kVA (solo cargas críticas si cae la red)",
+            "criterio": f"Generador para cargas críticas {cons_critico_horario_kw:.1f} kW × 1.5 = {P_gen:.1f} kW",
+            "empalme": _texto_empalme(demanda_max_kw, demanda_max_kw),
+            "capex_usd": round(P_kva * 600),
+            "opex_clp_mes": 50000,  # mantención
+        }
+    else:  # empalme_completo (default)
+        return {
+            "potencia_kw": demanda_max_kw,
+            "descripcion": f"Empalme estándar a red ({_texto_empalme(demanda_max_kw, demanda_max_kw)}), netbilling activo",
+            "criterio": f"Empalme dimensionado para la demanda máxima total ({demanda_max_kw:.1f} kW). FV inyecta excedentes (Ley 21.118 Netbilling).",
+            "empalme": _texto_empalme(demanda_max_kw, demanda_max_kw),
+            "capex_usd": 0,  # ya incluido en costos normales
+            "opex_clp_mes": 0,
+        }
+
+
+def _texto_empalme(P_kw: float, demanda_total_kw: float) -> str:
+    """Devuelve el texto del empalme estándar según corriente."""
+    monofasico = demanda_total_kw <= 8
+    V = 220 if monofasico else 380
+    fp = 0.93
+    I = P_kw * 1000 / (V * fp) if monofasico else P_kw * 1000 / (1.732 * V * fp)
+    escala = [10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400]
+    I_n = next((v for v in escala if v >= I * 1.15), 400)
+    return f"{I_n} A {'monofásico' if monofasico else 'trifásico'}"

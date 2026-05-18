@@ -45,6 +45,14 @@ class FvRequest(BaseModel):
     profundidad_descarga: float = Field(0.90, ge=0.5, le=1.0, description="DoD máxima de la batería (1.0 = 100%, típico LFP)")
     eficiencia_round_trip: float = Field(0.95, ge=0.7, le=1.0, description="Eficiencia carga-descarga de la batería")
     horas_consumo_critico_dia: float = Field(12, ge=1, le=24, description="Horas/día que las cargas críticas están activas")
+    # Configuración de respaldo / conexión a red
+    conectado_red: bool = Field(True, description="True = on-grid (netbilling/PMGD), False = off-grid (aislado)")
+    tipo_respaldo: Literal["ninguno", "generador_diesel", "empalme_reducido", "empalme_completo"] = Field(
+        "empalme_completo", description="ninguno=off-grid puro; generador_diesel=respaldo combustible; "
+        "empalme_reducido=contrato con menor potencia gracias al FV; empalme_completo=netbilling estándar"
+    )
+    factor_seguridad_respaldo: float = Field(1.25, ge=1.0, le=2.0, description="Factor de seguridad para dimensionar generador (1.25 típico)")
+    horas_uso_generador_mes: float = Field(20, ge=0, description="Horas/mes esperadas de uso del generador para costos de combustible")
 
     # Pérdidas editables (fracción 0..1)
     perdida_suciedad: float = 0.03
@@ -94,6 +102,16 @@ class FvResult(BaseModel):
     bess_dias_autonomia_real: float = 0    # Días que cubre con cargas críticas
     bess_consumo_critico_diario_kwh: float = 0
     bess_criterio_dimensionamiento: str = ""  # Texto explicando cómo se calculó
+
+    # Respaldo y conexión a red
+    conectado_red: bool = True
+    tipo_respaldo: str = "empalme_completo"
+    respaldo_potencia_kw: float = 0       # Potencia del generador o empalme
+    respaldo_descripcion: str = ""        # Texto humano-legible
+    respaldo_criterio: str = ""           # Cómo se calculó
+    empalme_recomendado: str = ""         # Texto del empalme (16A 1ϕ, 100A 3ϕ, etc.)
+    respaldo_capex_usd: float = 0         # Costo estimado del respaldo
+    respaldo_opex_mensual_clp: float = 0  # Combustible + mantención mensual
 
     # Compatibilidad / advertencias
     cabe_en_superficie: bool
