@@ -31,6 +31,8 @@ SECCIONES_DISPONIBLES = {
     "flujo_caja":           "Gráfico y tabla de flujo de caja 25 años",
     "metricas_economicas":  "VAN, TIR, payback, LCOE",
     "presupuesto_equipos":  "BOM con specs de equipos chilenos cotizables",
+    "analisis_tarifario":   "Detalle empalme reducido + tarifa BT1/BT2 (Lote E)",
+    "comparativa_escenarios": "Comparativa de 3 escenarios A/B/C con TCO 25 años (Lote E)",
     # Impacto y cumplimiento
     "co2_ambiental":        "Reducción CO2 y aporte ambiental",
     "normativa":            "Cumplimiento Ley 21.118, RIC SEC, TE-1",
@@ -52,6 +54,7 @@ PRESETS = {
         "fv_dimensionamiento", "generacion_grafica",
         "bess", "respaldo", "layout", "unifilar", "puesta_tierra",
         "capex", "flujo_caja", "metricas_economicas",
+        "analisis_tarifario", "comparativa_escenarios",
         "normativa", "advertencias",
     ],
     "presupuesto_comercial": [
@@ -59,6 +62,7 @@ PRESETS = {
         "fv_dimensionamiento", "bess", "respaldo",
         "presupuesto_equipos", "capex",
         "metricas_economicas", "flujo_caja",
+        "comparativa_escenarios", "analisis_tarifario",
         "advertencias",
     ],
 }

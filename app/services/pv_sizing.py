@@ -9,6 +9,7 @@ como factores multiplicativos en cascada (modelo PVsyst-like).
 import math
 from app.models.fv import FvRequest, FvResult, PerdidaItem
 from app.services.fv_equipment import seleccionar_panel, seleccionar_inversor, seleccionar_bateria
+from app.services.comparativa_escenarios import comparar_3_escenarios
 
 
 def _t_celda_promedio(t_amb_promedio_c: float, NOCT: float, G: float = 800) -> float:
@@ -151,6 +152,26 @@ def calcular_fv(req: FvRequest) -> FvResult:
                                      cons_critico_diario_kwh=cons_critico_diario,
                                      advertencias=advertencias)
 
+    # 9. LOTE E — Comparativa de escenarios (A off-grid puro / B FV+empalme mono / C on-grid)
+    try:
+        comparativa = comparar_3_escenarios(
+            consumo_anual_kwh=req.consumo_anual_kwh,
+            cobertura_solar=cob_real,
+            P_kwp=P_kwp_real,
+            demanda_max_kw=req.demanda_maxima_kw,
+            cons_critico_diario_kwh=cons_critico_diario,
+            dias_autonomia_objetivo=max(req.dias_autonomia, 2.0),
+            DoD=req.profundidad_descarga,
+            eta_rt=req.eficiencia_round_trip,
+            bess_capacidad_actual_kwh=bess_cap,
+            tipo_proyecto=req.tipo_proyecto,
+        )
+        escenario_rec = comparativa["escenario_recomendado"]
+    except Exception as e:
+        comparativa = {"error": str(e)}
+        escenario_rec = None
+        advertencias.append(f"Comparativa de escenarios no disponible: {e}")
+
     return FvResult(
         P_kwp=P_kwp_real,
         N_paneles=N_pan,
@@ -183,6 +204,8 @@ def calcular_fv(req: FvRequest) -> FvResult:
         empalme_recomendado=respaldo["empalme"],
         respaldo_capex_usd=respaldo["capex_usd"],
         respaldo_opex_mensual_clp=respaldo["opex_clp_mes"],
+        comparativa_escenarios=comparativa,
+        escenario_recomendado=escenario_rec,
         cabe_en_superficie=cabe,
         advertencias=advertencias,
     )

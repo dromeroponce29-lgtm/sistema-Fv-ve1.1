@@ -113,6 +113,10 @@ class FvResult(BaseModel):
     respaldo_capex_usd: float = 0         # Costo estimado del respaldo
     respaldo_opex_mensual_clp: float = 0  # Combustible + mantención mensual
 
+    # LOTE E — Comparativa de escenarios y análisis tarifario
+    comparativa_escenarios: Optional[dict] = None   # {escenarios: {A,B,C}, recomendado, ...}
+    escenario_recomendado: Optional[str] = None     # "A" | "B" | "C"
+
     # Compatibilidad / advertencias
     cabe_en_superficie: bool
     advertencias: List[str] = []

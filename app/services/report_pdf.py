@@ -239,6 +239,81 @@ def generar_pdf(proyecto: dict, salida: Path | str) -> Path:
         story.append(t)
         story.append(Spacer(1, 0.5*cm))
 
+    # LOTE E — Comparativa de escenarios (si está disponible)
+    comp = fv.get("comparativa_escenarios") if fv else None
+    if comp and inc("comparativa_escenarios") and "escenarios" in comp:
+        story.append(Paragraph("Comparativa de escenarios de continuidad operacional", sty["H2X"]))
+        story.append(Paragraph(
+            f"Análisis de 3 arquitecturas posibles sobre un horizonte de "
+            f"{comp.get('horizonte_anios',25)} años, tasa de descuento "
+            f"{comp.get('tasa_descuento',0.08)*100:.0f}%. El escenario óptimo según TCO es "
+            f"<b>{comp.get('escenario_recomendado','—')}</b>.", sty["BODY"]))
+
+        rows = [["Escenario", "CAPEX (CLP)", "OPEX/año (CLP)", "TCO 25y (CLP)"]]
+        for k in ["A", "B", "C"]:
+            e = comp["escenarios"].get(k, {})
+            if not e:
+                continue
+            marca = "★ " if e.get("es_recomendado") else ""
+            nombre = f"{marca}{k}: {e.get('nombre','—')[:55]}"
+            rows.append([
+                nombre,
+                _clp(e.get("capex_clp", 0)),
+                _clp(e.get("opex_anual_clp", 0)),
+                _clp(e.get("tco_25_anios_clp", 0)),
+            ])
+        t = Table(rows, colWidths=[8.5*cm, 3*cm, 3*cm, 3*cm])
+        t.setStyle(TableStyle([
+            ("FONT", (0,0), (-1,0), "Helvetica-Bold", 9),
+            ("BACKGROUND", (0,0), (-1,0), LIGHT),
+            ("TEXTCOLOR", (0,0), (-1,0), ORANGE_DARK),
+            ("FONT", (0,1), (-1,-1), "Helvetica", 8.5),
+            ("ALIGN", (1,0), (-1,-1), "RIGHT"),
+            ("LINEBELOW", (0,0), (-1,-1), 0.3, colors.HexColor("#E6E2D8")),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+            ("TOPPADDING", (0,0), (-1,-1), 5),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 0.3*cm))
+        story.append(Paragraph(
+            f"<i>Recomendación:</i> {comp.get('explicacion_recomendacion','')}", sty["BODY"]))
+        story.append(Spacer(1, 0.4*cm))
+
+    # LOTE E — Detalle tarifario del empalme recomendado
+    if comp and inc("analisis_tarifario") and "escenarios" in comp:
+        rec = comp.get("escenario_recomendado")
+        if rec in comp["escenarios"]:
+            e = comp["escenarios"][rec]
+            if e.get("empalme_label"):
+                story.append(Paragraph("Análisis tarifario del empalme recomendado", sty["H2X"]))
+                detalles_filas = [
+                    ["Empalme",          e.get("empalme_label", "—")],
+                    ["Categoría tarifaria", e.get("empalme_categoria", "—")],
+                ]
+                if "consumo_red_anual_kwh" in e:
+                    detalles_filas.append(["Consumo desde red", f"{e['consumo_red_anual_kwh']:,.0f} kWh/año".replace(",", ".")])
+                if "compra_red_anual_kwh" in e:
+                    detalles_filas.append(["Compra desde red", f"{e['compra_red_anual_kwh']:,.0f} kWh/año".replace(",", ".")])
+                if "inyeccion_red_anual_kwh" in e:
+                    detalles_filas.append(["Inyección a red (netbilling)", f"{e['inyeccion_red_anual_kwh']:,.0f} kWh/año".replace(",", ".")])
+                if "ingreso_netbilling_clp" in e:
+                    detalles_filas.append(["Ingreso netbilling", _clp(e['ingreso_netbilling_clp'])])
+                detalles_filas.append(["OPEX anual eléctrico", _clp(e.get("opex_anual_clp", 0))])
+                t = Table(detalles_filas, colWidths=[7*cm, 10.5*cm])
+                t.setStyle(TableStyle([
+                    ("FONT", (0,0), (0,-1), "Helvetica-Bold", 9),
+                    ("FONT", (1,0), (1,-1), "Helvetica", 9),
+                    ("TEXTCOLOR", (0,0), (0,-1), GRAY),
+                    ("LINEBELOW", (0,0), (-1,-1), 0.3, colors.HexColor("#E6E2D8")),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+                    ("TOPPADDING", (0,0), (-1,-1), 5),
+                ]))
+                story.append(t)
+                if e.get("costo_red_detalle", {}).get("detalle"):
+                    story.append(Spacer(1, 0.2*cm))
+                    story.append(Paragraph(f"<i>{e['costo_red_detalle']['detalle']}</i>", sty["SMALL"]))
+                story.append(Spacer(1, 0.4*cm))
+
     if inc("normativa"):
         story.append(Paragraph("Cumplimiento normativo", sty["H2X"]))
         P_kwp = fv.get("P_kwp", 0)

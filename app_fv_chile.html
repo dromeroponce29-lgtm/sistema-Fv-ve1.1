@@ -2105,6 +2105,8 @@ function tabFv(p) {
 
     ${bessAutonomiaSeccion(fv, p)}
 
+    ${comparativaEscenariosSeccion(fv)}
+
     ${equiposCatalogoCards(fv, p.tipo_proyecto)}
 
     <div class="notice" style="margin-top:14px;"><strong>Modelo:</strong> PR calculado con 8 pérdidas (temperatura, suciedad, cableado DC/AC, inversor, mismatch, sombras, disponibilidad), inversor seleccionado automáticamente desde el catálogo según escala y tipo de proyecto, CAPEX desglosado en 8 partidas, flujo de caja con degradación 0,5%/año y reposición de inversor año 12. Factor de emisión SEN 2024 = 0,200 tCO₂/MWh.</div>
@@ -2140,6 +2142,105 @@ function bessAutonomiaSeccion(fv, p) {
         <tr><td><strong>Eficiencia round-trip (η<sub>RT</sub>)</strong></td><td>95-97% para LFP modernas; reduce capacidad útil entre carga y descarga</td></tr>
       </table>
     </div>` : ""}
+  `;
+}
+
+// ========================================================================
+//  LOTE E — Comparativa de 3 escenarios de continuidad operacional
+//  A) FV off-grid puro · B) FV + empalme mono complementario ★ · C) on-grid netbilling
+// ========================================================================
+function comparativaEscenariosSeccion(fv) {
+  const comp = fv.comparativa_escenarios;
+  if (!comp || !comp.escenarios) return "";
+
+  const ESC = ["A", "B", "C"];
+  const colorRec = "#3A8348";   // verde para recomendado
+  const colorBorde = "#E89923"; // naranja para destacar B (foco del Lote E)
+  const rec = comp.escenario_recomendado;
+
+  const cardEscenario = (k) => {
+    const e = comp.escenarios[k];
+    if (!e) return "";
+    const esRecomendado = e.es_recomendado;
+    const esFoco = (k === "B");  // siempre destaca B como arquitectura principal de Lote E
+    const borderColor = esRecomendado ? colorRec : (esFoco ? colorBorde : "var(--border)");
+    const borderWidth = esRecomendado || esFoco ? 2 : 1;
+    const tag = esRecomendado ? '<span style="background:#3A8348; color:white; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700;">★ RECOMENDADO</span>' :
+                (esFoco ? '<span style="background:#E89923; color:white; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700;">★ ARQUITECTURA B</span>' : '');
+
+    const desgloseHtml = e.capex_desglose ? Object.entries(e.capex_desglose).map(([n,v]) => `
+      <tr><td style="font-size:11.5px; color:var(--muted);">${esc(n)}</td><td class="num" style="font-size:11.5px;">${clp(v)}</td></tr>
+    `).join("") : "";
+
+    const empalmeHtml = e.empalme_label ? `
+      <div style="margin-top:8px; padding:8px 10px; background:#faf6ee; border-radius:6px;">
+        <div style="font-size:11px; color:var(--muted); margin-bottom:2px;">Empalme propuesto</div>
+        <div style="font-size:13px; font-weight:600;">${esc(e.empalme_label)}</div>
+        ${e.empalme_kw_disponibles ? `<div style="font-size:11px; color:var(--muted);">${e.empalme_kw_disponibles} kW · contrato ${e.empalme_categoria || 'BT1'}</div>` : ''}
+      </div>` : (e.empalme ? `
+      <div style="margin-top:8px; padding:8px 10px; background:#faf6ee; border-radius:6px;">
+        <div style="font-size:11px; color:var(--muted); margin-bottom:2px;">Conexión a red</div>
+        <div style="font-size:13px; font-weight:600;">${esc(e.empalme)}</div>
+      </div>` : "");
+
+    const prosCons = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; font-size:11.5px;">
+        <div>
+          <div style="font-weight:600; color:#3A8348; margin-bottom:3px;">Pros</div>
+          <ul style="padding-left:14px; margin:0;">${(e.pros||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+        </div>
+        <div>
+          <div style="font-weight:600; color:#B85C20; margin-bottom:3px;">Contras</div>
+          <ul style="padding-left:14px; margin:0;">${(e.contras||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+        </div>
+      </div>
+    `;
+
+    return `
+      <div class="card" style="border:${borderWidth}px solid ${borderColor}; padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+          <div>
+            <div style="font-size:22px;">${esc(e.icono || '')}</div>
+            <div style="font-size:11px; color:var(--muted); font-weight:700; letter-spacing:0.05em;">ESCENARIO ${k}</div>
+            <div style="font-size:13.5px; font-weight:700; line-height:1.25; margin-top:2px;">${esc(e.nombre)}</div>
+          </div>
+          ${tag}
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:10px 0; padding:8px; background:#faf6ee; border-radius:6px;">
+          <div><div style="font-size:10px; color:var(--muted); text-transform:uppercase;">CAPEX</div><div style="font-size:14px; font-weight:700;">${clp(e.capex_clp)}</div></div>
+          <div><div style="font-size:10px; color:var(--muted); text-transform:uppercase;">OPEX/año</div><div style="font-size:14px; font-weight:700;">${clp(e.opex_anual_clp)}</div></div>
+          <div style="grid-column:span 2;"><div style="font-size:10px; color:var(--muted); text-transform:uppercase;">TCO 25 años (VP)</div><div style="font-size:16px; font-weight:700; color:${esRecomendado?colorRec:'var(--accent-dark)'};">${clp(e.tco_25_anios_clp)}</div></div>
+        </div>
+        ${empalmeHtml}
+        ${desgloseHtml ? `<table class="tbl" style="margin-top:8px;">${desgloseHtml}</table>` : ""}
+        <div style="margin-top:8px; font-size:11.5px; line-height:1.5; color:var(--muted); font-style:italic;">${esc(e.comentario || '')}</div>
+        ${prosCons}
+      </div>
+    `;
+  };
+
+  return `
+    <h2 style="margin-top:28px; font-size:13px; color:var(--accent-dark); text-transform:uppercase; letter-spacing:0.06em; font-weight:700;">
+      Comparativa de escenarios de continuidad operacional · Lote E
+    </h2>
+    <p style="font-size:13px; color:var(--muted); margin-top:6px; margin-bottom:12px;">
+      Análisis de 3 arquitecturas posibles sobre <strong>${comp.horizonte_anios||25} años</strong> a tasa
+      de descuento ${((comp.tasa_descuento||0.08)*100).toFixed(0)}%. El motor compara el costo total de propiedad (CAPEX + OPEX descontado)
+      e identifica la opción más conveniente para tu proyecto.
+    </p>
+    <div class="notice" style="background:${rec==='B'?'#fff5e6':'#e8f5e9'}; border-left:4px solid ${rec==='B'?colorBorde:colorRec}; margin-bottom:14px;">
+      <strong>★ Escenario recomendado: ${rec}</strong> — ahorro estimado de <strong>${clp(comp.ahorro_recomendado_vs_peor_clp||0)}</strong> sobre 25 años respecto al peor escenario.
+      <div style="font-size:12.5px; margin-top:6px;">${esc(comp.explicacion_recomendacion||'')}</div>
+    </div>
+    <div class="grid-3" style="gap:14px;">
+      ${ESC.map(cardEscenario).join("")}
+    </div>
+    <div class="notice" style="margin-top:14px; font-size:12.5px;">
+      <strong>Foco del análisis (B):</strong> el escenario B combina FV off-grid + BESS para 1 día de cargas críticas
+      + un empalme monofásico chico (BT1) que cubre el déficit residual. Reduce el cargo fijo eléctrico al mínimo
+      y evita sobredimensionar el BESS, manteniendo la continuidad operacional. Es la arquitectura preferida cuando
+      el cliente quiere bajar su dependencia de la red sin pagar un BESS gigante.
+    </div>
   `;
 }
 
@@ -2328,6 +2429,8 @@ const SECCIONES_REPORTE = [
     { key: "flujo_caja",           label: "Flujo de caja 25 años",                            desc: "Gráfico y tabla acumulada con degradación." },
     { key: "metricas_economicas",  label: "Métricas (VAN, TIR, payback, LCOE)",               desc: "Indicadores de rentabilidad financiera." },
     { key: "presupuesto_equipos",  label: "Presupuesto detallado con specs de equipos",       desc: "BOM con catálogo de equipos chilenos cotizables." },
+    { key: "analisis_tarifario",   label: "Análisis tarifario del empalme (Lote E)",          desc: "Detalle BT1/BT2, cargo fijo, cargo variable, costo anual eléctrico." },
+    { key: "comparativa_escenarios", label: "Comparativa 3 escenarios A/B/C (Lote E)",        desc: "Off-grid puro vs FV + empalme mono complementario vs on-grid netbilling. TCO 25 años." },
   ]},
   { grupo: "5. Impacto y cumplimiento", items: [
     { key: "co2_ambiental",        label: "Reducción de CO₂",                                 desc: "Toneladas evitadas, factor SEN 0,200 tCO₂/MWh." },
@@ -2345,12 +2448,12 @@ const PRESETS_REPORTE = {
   tecnico_sec: {
     label: "Técnico SEC", icon: "🔧",
     desc: "Documento completo para acompañar la declaración TE-1 al instalador autorizado.",
-    secciones: ["portada_kpis","resumen_ejecutivo","sitio","consumo","balance_fases","fv_dimensionamiento","generacion_grafica","bess","respaldo","layout","unifilar","puesta_tierra","capex","flujo_caja","metricas_economicas","normativa","advertencias"],
+    secciones: ["portada_kpis","resumen_ejecutivo","sitio","consumo","balance_fases","fv_dimensionamiento","generacion_grafica","bess","respaldo","layout","unifilar","puesta_tierra","capex","flujo_caja","metricas_economicas","analisis_tarifario","comparativa_escenarios","normativa","advertencias"],
   },
   presupuesto_comercial: {
     label: "Presupuesto comercial", icon: "💰",
-    desc: "Para licitaciones o cotizaciones: foco en BOM, CAPEX y rentabilidad.",
-    secciones: ["portada_kpis","resumen_ejecutivo","fv_dimensionamiento","bess","respaldo","presupuesto_equipos","capex","metricas_economicas","flujo_caja","advertencias"],
+    desc: "Para licitaciones o cotizaciones: foco en BOM, CAPEX, rentabilidad y comparativa de escenarios.",
+    secciones: ["portada_kpis","resumen_ejecutivo","fv_dimensionamiento","bess","respaldo","presupuesto_equipos","capex","metricas_economicas","flujo_caja","comparativa_escenarios","analisis_tarifario","advertencias"],
   },
 };
 
