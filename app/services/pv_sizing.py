@@ -74,7 +74,8 @@ def calcular_fv(req: FvRequest) -> FvResult:
 
     # 4. Inversor — selección automática considerando si requiere BESS
     requiere_bess = (req.tipo_sistema in ("on_grid_bess", "off_grid", "hibrido_red", "hibrido_generador") or req.capacidad_bess_kwh > 0)
-    inv = seleccionar_inversor(P_kwp_real, monofasico_ok=(P_kwp_real <= 8), requiere_bess=requiere_bess)
+    # FIX #16 — Umbral monofásico unificado a 8.5 kW (mismo que tarifas_chile.py)
+    inv = seleccionar_inversor(P_kwp_real, monofasico_ok=(P_kwp_real <= 8.5), requiere_bess=requiere_bess)
     P_AC = inv["P_AC_kw"]
     inv_modelo = f"{inv['marca']} {inv['modelo']}"
     if P_kwp_real / req.DC_AC_ratio > P_AC * 1.1:

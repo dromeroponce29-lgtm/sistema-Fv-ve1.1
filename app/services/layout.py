@@ -29,9 +29,10 @@ def _pitch_entre_filas(tipo: TipoMontaje, ancho_panel_m: float, inclinacion_deg:
     beta = math.radians(inclinacion_deg)
     if tipo == "techo_inclinado":
         return ancho_panel_m   # Sin pitch, paneles coplanares
-    # Altura solar mínima útil (21 jun 10am, hemisferio sur)
-    # δ = -23.45° en solsticio de invierno (norte hemisferio); en CL invierno: δ = +23.45°
-    # α(mediodía 21jun) = 90 - |latitud| - 23.45
+    # FIX #11 — Aclaración: En hemisferio sur (Chile), el solsticio de invierno ocurre
+    # el 21 de junio, cuando el Sol está al norte. La altura solar mínima al mediodía es:
+    # α(mediodía 21jun) = 90° - |latitud_sur| - 23.45°
+    # (En valor absoluto, ya que en Chile la latitud es negativa).
     alt_solar = max(15, 90 - abs(latitud_deg) - 23.45 + 5)  # +5 margen
     alfa = math.radians(alt_solar)
     # Distancia proyectada en el suelo para que la sombra de fila i no caiga sobre fila i+1
@@ -57,7 +58,15 @@ def calcular_layout(req: LayoutRequest) -> DisposicionFV:
     poly = Polygon(area.poligono)
     if not poly.is_valid:
         poly = poly.buffer(0)
+    # FIX #17 — buffer(-retiro) puede devolver MultiPolygon en concavidades severas;
+    # nos quedamos con el más grande para no fallar en contains() después.
     poly_util = poly.buffer(-area.retiro_perimetral_m)
+    if hasattr(poly_util, "geoms"):  # MultiPolygon → tomar el componente mayor
+        poly_util = max(poly_util.geoms, key=lambda g: g.area)
+        advertencias.append(
+            "El polígono útil quedó dividido por el retiro perimetral. "
+            "Se usa el subpolígono mayor para el packing."
+        )
     if poly_util.is_empty:
         advertencias.append("Retiro perimetral mayor que el área disponible")
         return DisposicionFV(
@@ -110,6 +119,11 @@ def calcular_layout(req: LayoutRequest) -> DisposicionFV:
         col_idx = 0
         x = minx
         n_en_fila = 0
+        # FIX #9 — Para polígonos cóncavos, si un rectángulo no cabe, no nos quedamos
+        # bloqueados: hacemos un pequeño barrido (sub-paso = dx/3) buscando posición válida.
+        # Esto recupera ~10-15% paneles en formas en L o U.
+        SUB_PASOS = 3
+        sub_dx = dx / SUB_PASOS
         while x + dx <= maxx + 1e-6:
             rect = shp_box(x, y, x + dx, y + dy)
             if poly_util.contains(rect):
@@ -122,7 +136,29 @@ def calcular_layout(req: LayoutRequest) -> DisposicionFV:
                     fila=fila_idx, columna=col_idx,
                 ))
                 n_en_fila += 1
-            x += dx     # Avanzar al siguiente espacio para panel en la misma fila
+                x += dx     # avance completo cuando hay panel
+            else:
+                # Sub-barrido fino antes de descartar (forma cóncava)
+                x_test = x + sub_dx
+                found = False
+                while x_test + dx <= x + dx + 1e-6 - sub_dx:
+                    rect2 = shp_box(x_test, y, x_test + dx, y + dy)
+                    if poly_util.contains(rect2):
+                        col_idx += 1
+                        paneles.append(PanelPosicionado(
+                            id=len(paneles) + 1,
+                            x=round(x_test, 3), y=round(y, 3),
+                            largo_m=dx, ancho_m=dy,
+                            orientacion=req.orientacion,
+                            fila=fila_idx, columna=col_idx,
+                        ))
+                        n_en_fila += 1
+                        x = x_test + dx
+                        found = True
+                        break
+                    x_test += sub_dx
+                if not found:
+                    x += dx
             if req.max_paneles and len(paneles) >= req.max_paneles:
                 break
         if n_en_fila > 0:

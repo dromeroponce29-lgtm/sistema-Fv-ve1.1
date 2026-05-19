@@ -8,6 +8,7 @@ from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from app.services.report_sections import seccion_incluida
 
 
 ORANGE = "C56022"
@@ -84,8 +85,9 @@ def generar_excel(proyecto: dict, salida: Path | str) -> Path:
     (FV+ECONÓMICO precalculados)."""
     salida = Path(salida)
     wb = Workbook()
+    inc = lambda k: seccion_incluida(proyecto, k)
 
-    # === Hoja 1: RESUMEN ===
+    # === Hoja 1: RESUMEN === (siempre incluida — portada del workbook)
     ws = wb.active
     ws.title = "Resumen"
     _set_widths(ws, [32, 22, 16, 16, 16, 16])
@@ -134,82 +136,84 @@ def generar_excel(proyecto: dict, salida: Path | str) -> Path:
         r = _kv(ws, r, "LCOE (CLP/kWh)", eco["LCOE_clp_kwh"], "$#,##0")
         r = _kv(ws, r, "CO₂ evitado (tCO₂/año)", eco["CO2_evitado_anual_kg"]/1000, "0.00")
 
-    # === Hoja 2: SITIO ===
-    ws2 = wb.create_sheet("Sitio")
-    _set_widths(ws2, [22, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14])
-    ws2["A1"] = "Caracterización del sitio"; ws2["A1"].font = H1
-    s = proyecto["sitio"]
-    r = 3
-    r = _kv(ws2, r, "Ciudad", s["nombre"])
-    r = _kv(ws2, r, "Región", s.get("region",""))
-    r = _kv(ws2, r, "Latitud (°)", s["lat"])
-    r = _kv(ws2, r, "Longitud (°)", s["lon"])
-    r = _kv(ws2, r, "Altitud (msnm)", s.get("altitud_msnm",0))
-    r += 1
-    r = _kv(ws2, r, "Inclinación óptima (°)", s["pvgis"]["slope"])
-    r = _kv(ws2, r, "Azimut óptimo (°)", s["pvgis"]["azimuth"])
-    r = _kv(ws2, r, "Generación anual por kWp (PVGIS)", s["pvgis"]["E_y"])
-    r = _kv(ws2, r, "Irradiación anual (kWh/m²)", s["pvgis"]["H_y"])
-    r += 2
-    ws2.cell(row=r, column=1, value="DATOS MENSUALES").font = H2
-    r += 1
-    headers = ["Mes"] + MESES
-    r = _table_header(ws2, r, headers)
-    r = _table_row(ws2, r, ["E (kWh/kWp) PVGIS"] + s["pvgis"]["monthly_E"], formats=[None]+["0.0"]*12)
-    r = _table_row(ws2, r, ["H(i) (kWh/m²) PVGIS"] + s["pvgis"]["monthly_H"], formats=[None]+["0.0"]*12)
-    # NASA tiene 11 o 12 valores; rellenar a 12 si falta
-    nasa_ghi = list(s["nasa"]["monthly_ghi"]) + [None]*(12-len(s["nasa"]["monthly_ghi"]))
-    nasa_t = list(s["nasa"]["monthly_t"]) + [None]*(12-len(s["nasa"]["monthly_t"]))
-    nasa_w = list(s["nasa"]["monthly_w"]) + [None]*(12-len(s["nasa"]["monthly_w"]))
-    r = _table_row(ws2, r, ["GHI (kWh/m²/día) NASA"] + nasa_ghi, formats=[None]+["0.00"]*12)
-    r = _table_row(ws2, r, ["T amb (°C) NASA"] + nasa_t, formats=[None]+["0.0"]*12)
-    r = _table_row(ws2, r, ["Viento (m/s) NASA"] + nasa_w, formats=[None]+["0.00"]*12)
+    # === Hoja 2: SITIO === (solo si "sitio" está marcado)
+    if inc("sitio"):
+        ws2 = wb.create_sheet("Sitio")
+        _set_widths(ws2, [22, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14])
+        ws2["A1"] = "Caracterización del sitio"; ws2["A1"].font = H1
+        s = proyecto["sitio"]
+        r = 3
+        r = _kv(ws2, r, "Ciudad", s["nombre"])
+        r = _kv(ws2, r, "Región", s.get("region",""))
+        r = _kv(ws2, r, "Latitud (°)", s["lat"])
+        r = _kv(ws2, r, "Longitud (°)", s["lon"])
+        r = _kv(ws2, r, "Altitud (msnm)", s.get("altitud_msnm",0))
+        r += 1
+        r = _kv(ws2, r, "Inclinación óptima (°)", s["pvgis"]["slope"])
+        r = _kv(ws2, r, "Azimut óptimo (°)", s["pvgis"]["azimuth"])
+        r = _kv(ws2, r, "Generación anual por kWp (PVGIS)", s["pvgis"]["E_y"])
+        r = _kv(ws2, r, "Irradiación anual (kWh/m²)", s["pvgis"]["H_y"])
+        r += 2
+        ws2.cell(row=r, column=1, value="DATOS MENSUALES").font = H2
+        r += 1
+        headers = ["Mes"] + MESES
+        r = _table_header(ws2, r, headers)
+        r = _table_row(ws2, r, ["E (kWh/kWp) PVGIS"] + s["pvgis"]["monthly_E"], formats=[None]+["0.0"]*12)
+        r = _table_row(ws2, r, ["H(i) (kWh/m²) PVGIS"] + s["pvgis"]["monthly_H"], formats=[None]+["0.0"]*12)
+        # NASA tiene 11 o 12 valores; rellenar a 12 si falta
+        nasa_ghi = list(s["nasa"]["monthly_ghi"]) + [None]*(12-len(s["nasa"]["monthly_ghi"]))
+        nasa_t = list(s["nasa"]["monthly_t"]) + [None]*(12-len(s["nasa"]["monthly_t"]))
+        nasa_w = list(s["nasa"]["monthly_w"]) + [None]*(12-len(s["nasa"]["monthly_w"]))
+        r = _table_row(ws2, r, ["GHI (kWh/m²/día) NASA"] + nasa_ghi, formats=[None]+["0.00"]*12)
+        r = _table_row(ws2, r, ["T amb (°C) NASA"] + nasa_t, formats=[None]+["0.0"]*12)
+        r = _table_row(ws2, r, ["Viento (m/s) NASA"] + nasa_w, formats=[None]+["0.00"]*12)
 
-    # === Hoja 3: RECINTOS ===
-    ws3 = wb.create_sheet("Recintos")
-    _set_widths(ws3, [8, 30, 16, 14, 14])
-    ws3["A1"] = "Recintos detectados del plano"; ws3["A1"].font = H1
-    r = 3
-    r = _table_header(ws3, r, ["#", "Nombre", "Uso", "Área (m²)", "Perímetro (m)"])
-    for rec in proyecto["plano"]["recintos"]:
-        r = _table_row(ws3, r, [rec["id"], rec["nombre"], rec["uso"], rec.get("area_m2",0), rec.get("perimetro_m",0)], formats=[None,None,None,"#,##0.0","#,##0.0"])
-    # Total
-    r = _table_row(ws3, r, ["", "TOTAL", "", proyecto["plano"]["area_total_m2"], ""], formats=[None,None,None,"#,##0.0",None])
-    for col in range(1,6):
-        c = ws3.cell(row=r-1, column=col); c.font = Font(name="Calibri", size=10, bold=True); c.fill = FILL_HEAD
+    # === Hoja 3: RECINTOS === (sólo si "consumo" está marcado)
+    if inc("consumo") and "plano" in proyecto:
+        ws3 = wb.create_sheet("Recintos")
+        _set_widths(ws3, [8, 30, 16, 14, 14])
+        ws3["A1"] = "Recintos detectados del plano"; ws3["A1"].font = H1
+        r = 3
+        r = _table_header(ws3, r, ["#", "Nombre", "Uso", "Área (m²)", "Perímetro (m)"])
+        for rec in proyecto["plano"]["recintos"]:
+            r = _table_row(ws3, r, [rec["id"], rec["nombre"], rec["uso"], rec.get("area_m2",0), rec.get("perimetro_m",0)], formats=[None,None,None,"#,##0.0","#,##0.0"])
+        r = _table_row(ws3, r, ["", "TOTAL", "", proyecto["plano"]["area_total_m2"], ""], formats=[None,None,None,"#,##0.0",None])
+        for col in range(1,6):
+            c = ws3.cell(row=r-1, column=col); c.font = Font(name="Calibri", size=10, bold=True); c.fill = FILL_HEAD
 
-    # === Hoja 4: CARGAS RIC ===
-    ws4 = wb.create_sheet("Cargas RIC")
-    _set_widths(ws4, [28, 14, 12, 14, 14, 14])
-    ws4["A1"] = "Cálculo de cargas según Pliegos RIC SEC"; ws4["A1"].font = H1
-    r = 3
-    ws4.cell(row=r, column=1, value="Carga por recinto (W/m² × m²)").font = H2; r += 1
-    r = _table_header(ws4, r, ["Recinto", "Uso", "Área (m²)", "Alumbrado (W)", "Enchufes (W)", "Subtotal (W)"])
-    for c in ric["recintos_carga"]:
-        r = _table_row(ws4, r, [c["nombre"], c["uso"], c["area_m2"], c["alumbrado_w"], c["enchufes_w"], c["subtotal_w"]], formats=[None,None,"#,##0.0","#,##0","#,##0","#,##0"])
-    r = _table_row(ws4, r, ["Subtotal recintos", "", "", "", "", ric["subtotal_recintos_w"]], formats=[None,None,None,None,None,"#,##0"])
-    for col in range(1,7): ws4.cell(row=r-1, column=col).font = Font(bold=True)
-    r += 2
-    ws4.cell(row=r, column=1, value="Cargas dedicadas").font = H2; r += 1
-    r = _table_header(ws4, r, ["Nombre", "", "", "", "Activa", "Potencia (W)"])
-    for d in ric["cargas_dedicadas"]:
-        r = _table_row(ws4, r, [d["nombre"], "", "", "", "Sí" if d.get("activa") else "No", d["potencia_w"]], formats=[None,None,None,None,None,"#,##0"])
-    r = _table_row(ws4, r, ["Subtotal dedicadas", "", "", "", "", ric["subtotal_dedicadas_w"]], formats=[None,None,None,None,None,"#,##0"])
-    for col in range(1,7): ws4.cell(row=r-1, column=col).font = Font(bold=True)
-    r += 2
-    ws4.cell(row=r, column=1, value="Consolidado").font = H2; r += 1
-    r = _kv(ws4, r, "Carga total instalada (W)", ric["carga_total_instalada_w"], "#,##0")
-    r = _kv(ws4, r, "Factor de demanda", ric["factor_demanda"], "0.00")
-    r = _kv(ws4, r, "Carga diversificada (W)", ric["carga_diversificada_w"], "#,##0")
-    r = _kv(ws4, r, "Factor de simultaneidad", ric["factor_simultaneidad"], "0.00")
-    r = _kv(ws4, r, "DEMANDA MÁXIMA (W)", ric["demanda_maxima_w"], "#,##0")
-    r = _kv(ws4, r, "Corriente nominal (A)", ric["corriente_nominal_a"], "0.0")
-    r = _kv(ws4, r, "Empalme sugerido", ric["tipo_empalme_sugerido"])
-    r = _kv(ws4, r, "Conexión", ric["conexion"])
-    r = _kv(ws4, r, "Factor de potencia asumido", ric["factor_potencia"], "0.00")
+    # === Hoja 4: CARGAS RIC === (sólo si "consumo" está marcado)
+    if inc("consumo"):
+        ws4 = wb.create_sheet("Cargas RIC")
+        _set_widths(ws4, [28, 14, 12, 14, 14, 14])
+        ws4["A1"] = "Cálculo de cargas según Pliegos RIC SEC"; ws4["A1"].font = H1
+        r = 3
+        ws4.cell(row=r, column=1, value="Carga por recinto (W/m² × m²)").font = H2; r += 1
+        r = _table_header(ws4, r, ["Recinto", "Uso", "Área (m²)", "Alumbrado (W)", "Enchufes (W)", "Subtotal (W)"])
+        for c in ric["recintos_carga"]:
+            r = _table_row(ws4, r, [c["nombre"], c["uso"], c["area_m2"], c["alumbrado_w"], c["enchufes_w"], c["subtotal_w"]], formats=[None,None,"#,##0.0","#,##0","#,##0","#,##0"])
+        r = _table_row(ws4, r, ["Subtotal recintos", "", "", "", "", ric["subtotal_recintos_w"]], formats=[None,None,None,None,None,"#,##0"])
+        for col in range(1,7): ws4.cell(row=r-1, column=col).font = Font(bold=True)
+        r += 2
+        ws4.cell(row=r, column=1, value="Cargas dedicadas").font = H2; r += 1
+        r = _table_header(ws4, r, ["Nombre", "", "", "", "Activa", "Potencia (W)"])
+        for d in ric["cargas_dedicadas"]:
+            r = _table_row(ws4, r, [d["nombre"], "", "", "", "Sí" if d.get("activa") else "No", d["potencia_w"]], formats=[None,None,None,None,None,"#,##0"])
+        r = _table_row(ws4, r, ["Subtotal dedicadas", "", "", "", "", ric["subtotal_dedicadas_w"]], formats=[None,None,None,None,None,"#,##0"])
+        for col in range(1,7): ws4.cell(row=r-1, column=col).font = Font(bold=True)
+        r += 2
+        ws4.cell(row=r, column=1, value="Consolidado").font = H2; r += 1
+        r = _kv(ws4, r, "Carga total instalada (W)", ric["carga_total_instalada_w"], "#,##0")
+        r = _kv(ws4, r, "Factor de demanda", ric["factor_demanda"], "0.00")
+        r = _kv(ws4, r, "Carga diversificada (W)", ric["carga_diversificada_w"], "#,##0")
+        r = _kv(ws4, r, "Factor de simultaneidad", ric["factor_simultaneidad"], "0.00")
+        r = _kv(ws4, r, "DEMANDA MÁXIMA (W)", ric["demanda_maxima_w"], "#,##0")
+        r = _kv(ws4, r, "Corriente nominal (A)", ric["corriente_nominal_a"], "0.0")
+        r = _kv(ws4, r, "Empalme sugerido", ric["tipo_empalme_sugerido"])
+        r = _kv(ws4, r, "Conexión", ric["conexion"])
+        r = _kv(ws4, r, "Factor de potencia asumido", ric["factor_potencia"], "0.00")
 
-    # === Hoja 5: DISEÑO FV ===
-    if fv:
+    # === Hoja 5: DISEÑO FV === (sólo si "fv_dimensionamiento" está marcado)
+    if fv and inc("fv_dimensionamiento"):
         ws5 = wb.create_sheet("Diseño FV")
         _set_widths(ws5, [28, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14])
         ws5["A1"] = "Dimensionamiento del sistema fotovoltaico"; ws5["A1"].font = H1
@@ -238,8 +242,8 @@ def generar_excel(proyecto: dict, salida: Path | str) -> Path:
         r = _kv(ws5, r, "Inyección a red (kWh/año)", fv["inyeccion_kwh"], "#,##0")
         r = _kv(ws5, r, "Compra a red (kWh/año)", fv["compra_red_kwh"], "#,##0")
 
-    # === Hoja 6: ECONÓMICO ===
-    if eco:
+    # === Hoja 6: ECONÓMICO === (sólo si alguna sección económica está marcada)
+    if eco and (inc("capex") or inc("metricas_economicas") or inc("flujo_caja")):
         ws6 = wb.create_sheet("Económico")
         _set_widths(ws6, [22, 18, 18, 18])
         ws6["A1"] = "Análisis económico — 25 años"; ws6["A1"].font = H1

@@ -121,8 +121,11 @@ body {
 .crumb b { color: var(--text); font-weight: 600; }
 .spacer { flex: 1; }
 
-.view { padding: 28px 32px; overflow-y: auto; flex: 1; }
+.view { padding: 28px 32px; overflow-y: auto; overflow-x: hidden; flex: 1; min-width: 0; max-width: 100%; box-sizing: border-box; }
 @media (max-width: 720px) { .view { padding: 20px 16px; } .topbar { padding: 0 16px; } }
+.view * { max-width: 100%; box-sizing: border-box; }
+.view table { word-break: break-word; }
+.view img, .view svg { max-width: 100%; height: auto; }
 
 /* ===== Componentes UI ===== */
 .btn {
@@ -1445,6 +1448,22 @@ function layoutSobrePlanoCard(p) {
       <div class="field"><label>Máx. paneles (0 = sin límite)</label><input type="number" id="ld-max-${p.id}" value="0" min="0" step="1"></div>
       <div class="field"><label>Latitud (°)</label><input type="number" id="ld-lat-${p.id}" value="${p.sitio ? p.sitio.lat : -33.4}" step="0.001"></div>
     </div>
+    <div style="margin-top:10px; padding:10px; background:#faf6ee; border-radius:6px; border:1px solid var(--border);">
+      <label style="font-size:12px; font-weight:600; color:var(--accent-dark); display:block; margin-bottom:6px;">
+        🚧 Obstáculos en la zona técnica (Mejora #9 — opcional)
+      </label>
+      <div style="font-size:11.5px; color:var(--muted); margin-bottom:6px; line-height:1.4;">
+        Si tu techo tiene <strong>chimeneas, lucarnas, antenas, sala de máquinas u otros obstáculos</strong>,
+        decláralos aquí como polígonos. Formato: JSON con lista de listas de [x, y] en metros, en el
+        mismo sistema de coordenadas del plano. Ejemplo: <code>[[[2,3],[4,3],[4,5],[2,5]]]</code> declara
+        un obstáculo rectangular de 2×2 m en la posición (2,3).
+      </div>
+      <textarea id="ld-obstaculos-${p.id}" rows="2" placeholder="[]  (sin obstáculos)" style="width:100%; padding:6px 8px; font-family:monospace; font-size:12px; border:1px solid var(--border); border-radius:4px; resize:vertical;">[]</textarea>
+      <div style="font-size:11px; color:var(--muted); margin-top:4px;">
+        El parser DXF/PDF <strong>no detecta obstáculos automáticamente</strong> (Mejora #10) —
+        tienes que declararlos a mano. Si los dejas vacíos, el packing usa todo el polígono del recinto.
+      </div>
+    </div>
   `;
 
   // KPIs del último cálculo
@@ -1478,7 +1497,7 @@ function layoutSobrePlanoCard(p) {
         calculará la disposición física sobre la geometría real de tu plano, no sobre un rectángulo abstracto.
       </p>
 
-      <div style="display:grid; grid-template-columns:1fr 2fr; gap:14px; align-items:flex-start;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; align-items:flex-start;">
         <div>
           <strong style="display:block; margin-bottom:8px; font-size:13px;">1. Elige la zona técnica:</strong>
           <div style="display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; padding-right:4px;">
@@ -1557,6 +1576,18 @@ async function calcularLayoutSobrePlano(projectId) {
   const apaso   = parseFloat(document.getElementById(`ld-anchopaso-${projectId}`).value) || 0.8;
   const maxp    = parseInt(document.getElementById(`ld-max-${projectId}`).value) || 0;
   const lat     = parseFloat(document.getElementById(`ld-lat-${projectId}`).value) || -33.4;
+  // Obstáculos (Mejora #9): parsear JSON, validar formato
+  let obstaculos = [];
+  const obsText = document.getElementById(`ld-obstaculos-${projectId}`).value.trim();
+  if (obsText && obsText !== "[]") {
+    try {
+      obstaculos = JSON.parse(obsText);
+      if (!Array.isArray(obstaculos)) throw new Error("Debe ser un array");
+    } catch (e) {
+      alert("Formato de obstáculos inválido. Esperaba JSON tipo [[[x,y],...]]. Error: " + e.message);
+      return;
+    }
+  }
 
   // Indicador visual
   const cont = document.getElementById(`ld-svg-container-${projectId}`);
@@ -1571,7 +1602,7 @@ async function calcularLayoutSobrePlano(projectId) {
       orientacion: orient, tipo_montaje: tipo,
       retiro_perimetral_m: retiro, pasillo_cada_n_filas: paso,
       ancho_pasillo_m: apaso, max_paneles: maxp,
-      obstaculos: [],
+      obstaculos: obstaculos,
       mostrar_grid: true, mostrar_etiquetas: true,
     };
     const res = await API.calcLayoutSobrePlano(req);
@@ -2197,23 +2228,23 @@ function comparativaEscenariosSeccion(fv) {
     `;
 
     return `
-      <div class="card" style="border:${borderWidth}px solid ${borderColor}; padding:12px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-          <div>
+      <div class="card" style="border:${borderWidth}px solid ${borderColor}; padding:12px; min-width:0; max-width:100%; box-sizing:border-box; overflow:hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:0;">
             <div style="font-size:22px;">${esc(e.icono || '')}</div>
             <div style="font-size:11px; color:var(--muted); font-weight:700; letter-spacing:0.05em;">ESCENARIO ${k}</div>
-            <div style="font-size:13.5px; font-weight:700; line-height:1.25; margin-top:2px;">${esc(e.nombre)}</div>
+            <div style="font-size:13.5px; font-weight:700; line-height:1.25; margin-top:2px; overflow-wrap:break-word;">${esc(e.nombre)}</div>
           </div>
           ${tag}
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:10px 0; padding:8px; background:#faf6ee; border-radius:6px;">
-          <div><div style="font-size:10px; color:var(--muted); text-transform:uppercase;">CAPEX</div><div style="font-size:14px; font-weight:700;">${clp(e.capex_clp)}</div></div>
-          <div><div style="font-size:10px; color:var(--muted); text-transform:uppercase;">OPEX/año</div><div style="font-size:14px; font-weight:700;">${clp(e.opex_anual_clp)}</div></div>
-          <div style="grid-column:span 2;"><div style="font-size:10px; color:var(--muted); text-transform:uppercase;">TCO 25 años (VP)</div><div style="font-size:16px; font-weight:700; color:${esRecomendado?colorRec:'var(--accent-dark)'};">${clp(e.tco_25_anios_clp)}</div></div>
+          <div style="min-width:0;"><div style="font-size:10px; color:var(--muted); text-transform:uppercase;">CAPEX</div><div style="font-size:14px; font-weight:700; overflow-wrap:break-word;">${clp(e.capex_clp)}</div></div>
+          <div style="min-width:0;"><div style="font-size:10px; color:var(--muted); text-transform:uppercase;">OPEX/año</div><div style="font-size:14px; font-weight:700; overflow-wrap:break-word;">${clp(e.opex_anual_clp)}</div></div>
+          <div style="grid-column:span 2; min-width:0;"><div style="font-size:10px; color:var(--muted); text-transform:uppercase;">TCO 25 años (VP)</div><div style="font-size:16px; font-weight:700; overflow-wrap:break-word; color:${esRecomendado?colorRec:'var(--accent-dark)'};">${clp(e.tco_25_anios_clp)}</div></div>
         </div>
         ${empalmeHtml}
-        ${desgloseHtml ? `<table class="tbl" style="margin-top:8px;">${desgloseHtml}</table>` : ""}
-        <div style="margin-top:8px; font-size:11.5px; line-height:1.5; color:var(--muted); font-style:italic;">${esc(e.comentario || '')}</div>
+        ${desgloseHtml ? `<table class="tbl" style="margin-top:8px; word-break:break-word;">${desgloseHtml}</table>` : ""}
+        <div style="margin-top:8px; font-size:11.5px; line-height:1.5; color:var(--muted); font-style:italic; overflow-wrap:break-word;">${esc(e.comentario || '')}</div>
         ${prosCons}
       </div>
     `;
@@ -2409,6 +2440,7 @@ const SECCIONES_REPORTE = [
   { grupo: "1. Identificación", items: [
     { key: "portada_kpis",         label: "Portada con KPIs principales",                     desc: "Bloque destacado con kWp, cobertura, ahorro, payback, CO2." },
     { key: "resumen_ejecutivo",    label: "Resumen narrativo ejecutivo",                      desc: "Texto en lenguaje claro para el cliente final." },
+    { key: "explicacion_simple",   label: "Explicación simple (sin tecnicismos)",             desc: "Lenguaje claro + glosario. 'Recuperarás tu inversión en X años', meses de luz gratis, ayuda al planeta." },
   ]},
   { grupo: "2. Sitio y consumo", items: [
     { key: "sitio",                label: "Sitio y recurso solar",                            desc: "Ubicación, coordenadas, irradiación PVGIS y NASA POWER." },
@@ -2421,6 +2453,7 @@ const SECCIONES_REPORTE = [
     { key: "bess",                 label: "Sistema de baterías (BESS)",                       desc: "Capacidad útil, autonomía real, criterio de dimensionamiento." },
     { key: "respaldo",             label: "Respaldo y conexión a red",                        desc: "On-grid / off-grid, generador diésel o empalme." },
     { key: "layout",               label: "Layout y disposición de paneles",                  desc: "Aprovechamiento de superficie, pitch, retiros." },
+    { key: "planos_tecnicos",      label: "Planos técnicos imprimibles (Bloqueante #5)",      desc: "Plano arquitectónico con paneles overlay, listo para el instalador." },
     { key: "unifilar",             label: "Diagrama unifilar",                                desc: "Protecciones DC/AC, SPD, medidor bidireccional." },
     { key: "puesta_tierra",        label: "Puesta a tierra",                                  desc: "Malla, resistencia objetivo, equipotencialización." },
   ]},
@@ -2443,12 +2476,12 @@ const PRESETS_REPORTE = {
   cliente_final: {
     label: "Cliente final", icon: "👔",
     desc: "Lenguaje ejecutivo y visual. Sin tecnicismos eléctricos detallados.",
-    secciones: ["portada_kpis","resumen_ejecutivo","fv_dimensionamiento","generacion_grafica","layout","capex","metricas_economicas","co2_ambiental","normativa","advertencias"],
+    secciones: ["portada_kpis","resumen_ejecutivo","explicacion_simple","fv_dimensionamiento","generacion_grafica","layout","planos_tecnicos","capex","metricas_economicas","co2_ambiental","normativa","advertencias"],
   },
   tecnico_sec: {
     label: "Técnico SEC", icon: "🔧",
     desc: "Documento completo para acompañar la declaración TE-1 al instalador autorizado.",
-    secciones: ["portada_kpis","resumen_ejecutivo","sitio","consumo","balance_fases","fv_dimensionamiento","generacion_grafica","bess","respaldo","layout","unifilar","puesta_tierra","capex","flujo_caja","metricas_economicas","analisis_tarifario","comparativa_escenarios","normativa","advertencias"],
+    secciones: ["portada_kpis","resumen_ejecutivo","sitio","consumo","balance_fases","fv_dimensionamiento","generacion_grafica","bess","respaldo","layout","planos_tecnicos","unifilar","puesta_tierra","capex","flujo_caja","metricas_economicas","analisis_tarifario","comparativa_escenarios","normativa","advertencias"],
   },
   presupuesto_comercial: {
     label: "Presupuesto comercial", icon: "💰",

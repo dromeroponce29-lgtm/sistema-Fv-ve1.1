@@ -114,7 +114,14 @@ def calcular_carga_ric(req: RicRequest) -> RicResult:
     if req.tipo_proyecto == "vivienda":
         f_demanda = factor_demanda_vivienda(area_total)
     elif req.tipo_proyecto == "edificio_residencial":
-        f_demanda = 0.55  # default razonable, debería refinarse con N° de deptos
+        # FIX #5 — Factor demanda escalonado por N° departamentos (estimado por área total).
+        # SEC sugiere fd decreciente con N° unidades. Asume ~70 m²/depto promedio.
+        n_deptos_estimado = max(1, int(area_total / 70))
+        if n_deptos_estimado <= 5:    f_demanda = 0.65
+        elif n_deptos_estimado <= 10: f_demanda = 0.55
+        elif n_deptos_estimado <= 30: f_demanda = 0.45
+        elif n_deptos_estimado <= 60: f_demanda = 0.35
+        else:                         f_demanda = 0.25
     elif req.tipo_proyecto == "hotel":
         f_demanda = 0.70
     elif req.tipo_proyecto == "industria":
@@ -142,11 +149,17 @@ def calcular_carga_ric(req: RicRequest) -> RicResult:
         # Si fase=trifasica → reparte equitativamente entre L1, L2, L3
         # Si fase=monofasica/L1/L2/L3 → asigna a esa fase específica
         # Auto-balanceo: las "monofasicas" sin asignar van round-robin a L1/L2/L3
-        fase_ptr = 0  # contador round-robin
+        fase_ptr = 0  # contador round-robin (sólo para cargas sin fase asignada)
         fases = ["L1", "L2", "L3"]
         cargas_por_fase = {"L1": 0.0, "L2": 0.0, "L3": 0.0}
-        for d in dedicadas:
-            if not d.activa: continue
+        # FIX #10 — Ordenar cargas dedicadas activas por potencia descendente.
+        # Las cargas grandes asignadas a la fase con menor carga acumulada minimiza
+        # el desbalance vs round-robin ciego.
+        dedicadas_ordenadas = sorted(
+            [d for d in dedicadas if d.activa],
+            key=lambda c: -c.potencia_w,
+        )
+        for d in dedicadas_ordenadas:
             p = d.potencia_w
             f = d.fase
             if f == "trifasica":
@@ -156,12 +169,13 @@ def calcular_carga_ric(req: RicRequest) -> RicResult:
             elif f in ("L1", "L2", "L3"):
                 cargas_por_fase[f] += p
             elif f == "bifasica":
-                cargas_por_fase[fases[fase_ptr % 3]] += p / 2
-                cargas_por_fase[fases[(fase_ptr + 1) % 3]] += p / 2
-                fase_ptr += 1
-            else:  # monofasica sin asignar → round-robin
-                cargas_por_fase[fases[fase_ptr % 3]] += p
-                fase_ptr += 1
+                # FIX #10 — Asignar a las 2 fases con menor carga acumulada
+                ordenadas = sorted(fases, key=lambda x: cargas_por_fase[x])
+                cargas_por_fase[ordenadas[0]] += p / 2
+                cargas_por_fase[ordenadas[1]] += p / 2
+            else:  # monofasica sin asignar → fase con menor carga
+                fase_min = min(fases, key=lambda x: cargas_por_fase[x])
+                cargas_por_fase[fase_min] += p
         # Cargas por recinto: las repartimos equitativamente (asumimos balance arquitectónico)
         for rc in recintos_carga:
             for fase in fases:

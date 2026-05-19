@@ -32,10 +32,14 @@ from app.services.tarifas_chile import (
 )
 
 
+import os
+
 # Defaults editables (actualizados 2026-05-18 según hallazgos auditor)
 TASA_DESCUENTO = 0.08
 HORIZONTE_ANIOS = 25
-PRECIO_CLP_USD = 950
+# FIX Observación #13 — Tipo de cambio configurable vía env var FV_CLP_USD.
+# Fallback a 950 si no está. Actualizar trimestralmente o usar API si se requiere.
+PRECIO_CLP_USD = float(os.environ.get("FV_CLP_USD", "950"))
 # FIX #3 — Constantes 2026: BESS LFP residencial entregado en obra
 COSTO_BESS_USD_KWH = 320
 # FIX #3 — CAPEX FV residencial Chile 2026 (paneles + inversor + estructura + instalación)
@@ -99,8 +103,15 @@ def comparar_3_escenarios(
     es_residencial = tipo_proyecto in ("vivienda", "edificio_residencial")
 
     # ───── Escenario A: OFF-GRID PURO ──────────────────────────────────────
-    # BESS dimensionado para N días de consumo completo (no sólo crítico)
-    bess_A_nominal = consumo_anual_kwh / 365 * dias_autonomia_objetivo / (DoD * eta_rt)
+    # FIX #1 — BESS dimensionado para cargas CRÍTICAS × días × factor seguridad 1.5,
+    # NO consumo total. El consumo no crítico se atenúa cuando hay baja generación.
+    # Esto refleja la realidad del off-grid: priorizar lo crítico, no llevar la casa
+    # entera 3 días sin sol.
+    FS_OFFGRID = 1.5  # factor seguridad para imprevistos
+    bess_A_nominal = max(
+        cons_critico_diario_kwh * dias_autonomia_objetivo * FS_OFFGRID / (DoD * eta_rt),
+        consumo_anual_kwh / 365 * 1.0 / (DoD * eta_rt),  # piso: 1 día de consumo total
+    )
     capex_bess_A   = _capex_bess(bess_A_nominal)
     # Generador como backup obligatorio en off-grid puro? Asumimos NO (puro = sin gen)
     # OPEX: sólo mantención FV + reemplazo BESS a los 12 años
@@ -116,9 +127,13 @@ def comparar_3_escenarios(
     # BESS dimensionado para sólo 1 día de cargas críticas (no consumo total)
     bess_B_nominal = cons_critico_diario_kwh * 1.0 / (DoD * eta_rt)  # 1 día crítico
     capex_bess_B   = _capex_bess(bess_B_nominal)
-    # Empalme monofásico mínimo que cubra demanda residual (cargas no críticas + picos)
-    # Estimamos demanda del empalme = max(demanda_max × 0.4, cargas críticas en kW)
-    P_empalme_B = max(demanda_max_kw * 0.4, cons_critico_diario_kwh / 12)
+    # FIX #8 — piso de 3 kW (16 A monofásico) como tamaño mínimo comercial.
+    # Empalmes < 3 kW no son práctico-comerciales en Chile.
+    P_empalme_B = max(
+        demanda_max_kw * 0.4,
+        cons_critico_diario_kwh / 12,
+        3.0,  # piso 3 kW = 16 A monofásico
+    )
     P_empalme_B = min(P_empalme_B, 8.5)  # cap a 8.5 kW (límite BT1 monofásico)
     amp_B, lbl_B = amperaje_para_potencia(P_empalme_B, monofasico=True)
     # En off-grid + empalme complementario, asumimos que ~15% del consumo se compra a red

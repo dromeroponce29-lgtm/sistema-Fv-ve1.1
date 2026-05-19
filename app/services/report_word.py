@@ -250,173 +250,233 @@ def generar_word(proyecto: dict, salida: Path | str) -> Path:
            f"0,200 tCO2/MWh publicado por el Coordinador Eléctrico Nacional.".replace(",", "."))
 
     # ===== 3. CARACTERIZACIÓN DEL SITIO =====
-    _add_heading(doc, "3. Caracterización del Sitio y Recurso Solar", level=1)
-    _table_kv(doc, [
-        ("Latitud", f"{s['lat']:.4f}°"),
-        ("Longitud", f"{s['lon']:.4f}°"),
-        ("Altitud", f"{s.get('altitud_msnm', 0):.0f} msnm"),
-        ("Inclinación óptima (β)", f"{s['pvgis']['slope']:.0f}°"),
-        ("Azimut óptimo (α)", f"{s['pvgis']['azimuth']:.0f}° (orientación norte para hemisferio sur)"),
-        ("Irradiación anual plano inclinado H(i)_y", f"{s['pvgis']['H_y']:.0f} kWh/m²/año"),
-        ("Generación específica anual E_y", f"{s['pvgis']['E_y']:.0f} kWh/kWp/año"),
-        ("Temperatura ambiente promedio anual", f"{s['nasa']['t2m_avg']:.1f} °C"),
-        ("Velocidad del viento promedio (10 m)", f"{s['nasa']['wind_avg']:.2f} m/s"),
-        ("Fuente de datos solares", "PVGIS v5.3 (Joint Research Centre, Comisión Europea)"),
-        ("Fuente de datos meteorológicos", "NASA POWER (Prediction Of Worldwide Energy Resources)"),
-    ])
+    if inc("sitio"):
+        _add_heading(doc, "3. Caracterización del Sitio y Recurso Solar", level=1)
+        _table_kv(doc, [
+            ("Latitud", f"{s['lat']:.4f}°"),
+            ("Longitud", f"{s['lon']:.4f}°"),
+            ("Altitud", f"{s.get('altitud_msnm', 0):.0f} msnm"),
+            ("Inclinación óptima (β)", f"{s['pvgis']['slope']:.0f}°"),
+            ("Azimut óptimo (α)", f"{s['pvgis']['azimuth']:.0f}° (orientación norte para hemisferio sur)"),
+            ("Irradiación anual plano inclinado H(i)_y", f"{s['pvgis']['H_y']:.0f} kWh/m²/año"),
+            ("Generación específica anual E_y", f"{s['pvgis']['E_y']:.0f} kWh/kWp/año"),
+            ("Temperatura ambiente promedio anual", f"{s['nasa']['t2m_avg']:.1f} °C"),
+            ("Velocidad del viento promedio (10 m)", f"{s['nasa']['wind_avg']:.2f} m/s"),
+            ("Fuente de datos solares", "PVGIS v5.3 (Joint Research Centre, Comisión Europea)"),
+            ("Fuente de datos meteorológicos", "NASA POWER (Prediction Of Worldwide Energy Resources)"),
+        ])
 
     # ===== 4. CÁLCULO DE CARGAS (RIC) =====
-    _add_heading(doc, "4. Memoria de Cálculo de Cargas (RIC)", level=1)
-    _p(doc, "El cálculo de carga eléctrica del inmueble se efectúa conforme a las "
-       "disposiciones de los Pliegos Técnicos RIC sobre dimensionamiento de circuitos "
-       "interiores, considerando la potencia mínima por uso de recinto, las cargas "
-       "dedicadas, y los factores de demanda y simultaneidad aplicables al tipo de proyecto.")
-    _spacer(doc, 4)
-    _add_heading(doc, "4.1 Distribución de recintos", level=2)
-    rows = [(c["nombre"], c["uso"], f"{c['area_m2']:.1f}", f"{c['alumbrado_w']:.0f}",
-             f"{c['enchufes_w']:.0f}", f"{c['subtotal_w']:.0f}") for c in ric["recintos_carga"]]
-    _table_data(doc,
-        ["Recinto", "Uso", "Área (m²)", "Alumbrado (W)", "Enchufes (W)", "Subtotal (W)"],
-        rows,
-        widths_cm=[4.5, 2.5, 2, 2.5, 2.5, 2.5])
-    _spacer(doc, 4)
-    _add_heading(doc, "4.2 Cargas dedicadas", level=2)
-    if ric["cargas_dedicadas"]:
-        rows = [(d["nombre"], "Activa" if d.get("activa") else "Inactiva", f"{d['potencia_w']:.0f}")
-                for d in ric["cargas_dedicadas"]]
-        _table_data(doc, ["Carga", "Estado", "Potencia (W)"], rows, widths_cm=[10, 3, 3.5])
-    else:
-        _p(doc, "Sin cargas dedicadas declaradas.", italic=True)
-    _spacer(doc, 4)
-    _add_heading(doc, "4.3 Consolidado y demanda máxima", level=2)
-    _table_kv(doc, [
-        ("Superficie total construida", f"{ric['area_total_m2']:.1f} m²"),
-        ("Subtotal cargas por recinto", f"{ric['subtotal_recintos_w']:,.0f} W".replace(",", ".")),
-        ("Subtotal cargas dedicadas", f"{ric['subtotal_dedicadas_w']:,.0f} W".replace(",", ".")),
-        ("Carga total instalada", f"{ric['carga_total_instalada_w']:,.0f} W".replace(",", ".")),
-        ("Factor de demanda aplicado", f"{ric['factor_demanda']:.2f}"),
-        ("Carga diversificada", f"{ric['carga_diversificada_w']:,.0f} W".replace(",", ".")),
-        ("Factor de simultaneidad", f"{ric['factor_simultaneidad']:.2f}"),
-        ("DEMANDA MÁXIMA DEL EMPALME", f"{ric['demanda_maxima_w']:,.0f} W = {ric['demanda_maxima_w']/1000:.2f} kW".replace(",", ".")),
-        ("Corriente nominal del empalme", f"{ric['corriente_nominal_a']:.1f} A"),
-        ("Empalme sugerido", ric["tipo_empalme_sugerido"]),
-        ("Sistema de conexión", ric["conexion"].replace("_", " ")),
-        ("Factor de potencia asumido", f"{ric['factor_potencia']:.2f}"),
-    ])
+    if inc("consumo"):
+        _add_heading(doc, "4. Memoria de Cálculo de Cargas (RIC)", level=1)
+        _p(doc, "El cálculo de carga eléctrica del inmueble se efectúa conforme a las "
+           "disposiciones de los Pliegos Técnicos RIC sobre dimensionamiento de circuitos "
+           "interiores, considerando la potencia mínima por uso de recinto, las cargas "
+           "dedicadas, y los factores de demanda y simultaneidad aplicables al tipo de proyecto.")
+        _spacer(doc, 4)
+        _add_heading(doc, "4.1 Distribución de recintos", level=2)
+        rows = [(c["nombre"], c["uso"], f"{c['area_m2']:.1f}", f"{c['alumbrado_w']:.0f}",
+                 f"{c['enchufes_w']:.0f}", f"{c['subtotal_w']:.0f}") for c in ric["recintos_carga"]]
+        _table_data(doc,
+            ["Recinto", "Uso", "Área (m²)", "Alumbrado (W)", "Enchufes (W)", "Subtotal (W)"],
+            rows,
+            widths_cm=[4.5, 2.5, 2, 2.5, 2.5, 2.5])
+        _spacer(doc, 4)
+        _add_heading(doc, "4.2 Cargas dedicadas", level=2)
+        if ric["cargas_dedicadas"]:
+            rows = [(d["nombre"], "Activa" if d.get("activa") else "Inactiva", f"{d['potencia_w']:.0f}")
+                    for d in ric["cargas_dedicadas"]]
+            _table_data(doc, ["Carga", "Estado", "Potencia (W)"], rows, widths_cm=[10, 3, 3.5])
+        else:
+            _p(doc, "Sin cargas dedicadas declaradas.", italic=True)
+        _spacer(doc, 4)
+        _add_heading(doc, "4.3 Consolidado y demanda máxima", level=2)
+        _table_kv(doc, [
+            ("Superficie total construida", f"{ric['area_total_m2']:.1f} m²"),
+            ("Subtotal cargas por recinto", f"{ric['subtotal_recintos_w']:,.0f} W".replace(",", ".")),
+            ("Subtotal cargas dedicadas", f"{ric['subtotal_dedicadas_w']:,.0f} W".replace(",", ".")),
+            ("Carga total instalada", f"{ric['carga_total_instalada_w']:,.0f} W".replace(",", ".")),
+            ("Factor de demanda aplicado", f"{ric['factor_demanda']:.2f}"),
+            ("Carga diversificada", f"{ric['carga_diversificada_w']:,.0f} W".replace(",", ".")),
+            ("Factor de simultaneidad", f"{ric['factor_simultaneidad']:.2f}"),
+            ("DEMANDA MÁXIMA DEL EMPALME", f"{ric['demanda_maxima_w']:,.0f} W = {ric['demanda_maxima_w']/1000:.2f} kW".replace(",", ".")),
+            ("Corriente nominal del empalme", f"{ric['corriente_nominal_a']:.1f} A"),
+            ("Empalme sugerido", ric["tipo_empalme_sugerido"]),
+            ("Sistema de conexión", ric["conexion"].replace("_", " ")),
+            ("Factor de potencia asumido", f"{ric['factor_potencia']:.2f}"),
+        ])
+
+    # ===== 4.4 BALANCE DE FASES (solo si trifásico) =====
+    if inc("balance_fases") and ric.get("conexion") == "trifasica_380":
+        _add_heading(doc, "4.4 Balance de fases (sistema trifásico)", level=2)
+        _table_data(doc,
+            ["Fase", "Carga (W)", "Corriente (A)"],
+            [
+                ("L1", f"{ric.get('carga_L1_w',0):,.0f}".replace(",","."), f"{ric.get('corriente_L1_a',0):.1f}"),
+                ("L2", f"{ric.get('carga_L2_w',0):,.0f}".replace(",","."), f"{ric.get('corriente_L2_a',0):.1f}"),
+                ("L3", f"{ric.get('carga_L3_w',0):,.0f}".replace(",","."), f"{ric.get('corriente_L3_a',0):.1f}"),
+            ], widths_cm=[5, 6, 5])
+        _p(doc, f"Desbalance estimado entre fases: {ric.get('desbalance_fases_pct',0):.1f} % "
+           f"(criterio aceptable: < 15 %).", italic=True)
 
     # ===== 5. DIMENSIONAMIENTO DEL SISTEMA FV =====
-    _add_heading(doc, "5. Dimensionamiento del Sistema Fotovoltaico", level=1)
-    _table_kv(doc, [
-        ("Potencia FV instalada (DC)", f"{p_kwp:.2f} kWp"),
-        ("Número de paneles", f"{n_pan} unidades"),
-        ("Tecnología", "Silicio monocristalino (PERC / TOPCon)"),
-        ("Potencia nominal del panel", "550 Wp (STC)"),
-        ("Superficie ocupada (estimada)", f"{fv.get('superficie_m2', 0):.1f} m²"),
-        ("Configuración del arreglo", f"Strings calculados según rango MPPT del inversor seleccionado"),
-        ("Inversor seleccionado", fv.get("inversor_modelo", "—")),
-        ("Potencia AC del inversor", f"{fv.get('inversor_P_AC_kw', 0):.1f} kW"),
-        ("Ratio DC/AC", f"1,20"),
-        ("Performance Ratio anual estimado", f"{fv.get('PR_anual', 0)*100:.1f} %"),
-        ("Factor de planta esperado", f"{fv.get('factor_planta', 0)*100:.1f} %"),
-    ])
-    _spacer(doc, 4)
-    _add_heading(doc, "5.1 Pérdidas técnicas consideradas", level=2)
-    if fv.get("perdidas"):
-        rows = [(p["nombre"], f"{p['pct']:.2f} %") for p in fv["perdidas"]]
-        _table_data(doc, ["Pérdida", "Magnitud"], rows, widths_cm=[10, 4])
-        _p(doc, f"Temperatura de celda promedio estimada: {fv.get('T_celda_promedio_c', 25):.1f} °C "
-           f"(modelo Sandia con altura solar local y corrección por altitud).", italic=True)
-    _spacer(doc, 4)
-    _add_heading(doc, "5.2 Producción esperada", level=2)
-    _table_kv(doc, [
-        ("Generación anual estimada", f"{fv.get('generacion_anual_kwh', 0):,.0f} kWh".replace(",", ".")),
-        ("Cobertura solar del consumo", f"{fv.get('cobertura_real', 0)*100:.1f} %"),
-        ("Energía autoconsumida (estimada)", f"{fv.get('autoconsumo_kwh', 0):,.0f} kWh/año".replace(",", ".")),
-        ("Energía inyectada a red (estimada)", f"{fv.get('inyeccion_kwh', 0):,.0f} kWh/año".replace(",", ".")),
-        ("Energía comprada a red (residual)", f"{fv.get('compra_red_kwh', 0):,.0f} kWh/año".replace(",", ".")),
-    ])
+    if inc("fv_dimensionamiento"):
+        _add_heading(doc, "5. Dimensionamiento del Sistema Fotovoltaico", level=1)
+        _table_kv(doc, [
+            ("Potencia FV instalada (DC)", f"{p_kwp:.2f} kWp"),
+            ("Número de paneles", f"{n_pan} unidades"),
+            ("Tecnología", "Silicio monocristalino (PERC / TOPCon)"),
+            ("Potencia nominal del panel", "550 Wp (STC)"),
+            ("Superficie ocupada (estimada)", f"{fv.get('superficie_m2', 0):.1f} m²"),
+            ("Configuración del arreglo", f"Strings calculados según rango MPPT del inversor seleccionado"),
+            ("Inversor seleccionado", fv.get("inversor_modelo", "—")),
+            ("Potencia AC del inversor", f"{fv.get('inversor_P_AC_kw', 0):.1f} kW"),
+            ("Ratio DC/AC", f"1,20"),
+            ("Performance Ratio anual estimado", f"{fv.get('PR_anual', 0)*100:.1f} %"),
+            ("Factor de planta esperado", f"{fv.get('factor_planta', 0)*100:.1f} %"),
+        ])
+        _spacer(doc, 4)
+        _add_heading(doc, "5.1 Pérdidas técnicas consideradas", level=2)
+        if fv.get("perdidas"):
+            rows = [(p["nombre"], f"{p['pct']:.2f} %") for p in fv["perdidas"]]
+            _table_data(doc, ["Pérdida", "Magnitud"], rows, widths_cm=[10, 4])
+            _p(doc, f"Temperatura de celda promedio estimada: {fv.get('T_celda_promedio_c', 25):.1f} °C "
+               f"(modelo Sandia con altura solar local y corrección por altitud).", italic=True)
+        _spacer(doc, 4)
+        _add_heading(doc, "5.2 Producción esperada", level=2)
+        _table_kv(doc, [
+            ("Generación anual estimada", f"{fv.get('generacion_anual_kwh', 0):,.0f} kWh".replace(",", ".")),
+            ("Cobertura solar del consumo", f"{fv.get('cobertura_real', 0)*100:.1f} %"),
+            ("Energía autoconsumida (estimada)", f"{fv.get('autoconsumo_kwh', 0):,.0f} kWh/año".replace(",", ".")),
+            ("Energía inyectada a red (estimada)", f"{fv.get('inyeccion_kwh', 0):,.0f} kWh/año".replace(",", ".")),
+            ("Energía comprada a red (residual)", f"{fv.get('compra_red_kwh', 0):,.0f} kWh/año".replace(",", ".")),
+        ])
+
+    # ===== 5.3 BESS (si aplica) =====
+    if inc("bess") and fv.get("bess_capacidad_kwh", 0) > 0:
+        _add_heading(doc, "5.3 Sistema de almacenamiento (BESS)", level=2)
+        _table_kv(doc, [
+            ("Capacidad nominal", f"{fv.get('bess_capacidad_kwh', 0):.1f} kWh"),
+            ("Capacidad útil (tras DoD × η)", f"{fv.get('bess_capacidad_util_kwh', 0):.1f} kWh"),
+            ("Potencia máxima de descarga", f"{fv.get('bess_potencia_kw', 0):.1f} kW"),
+            ("Días de autonomía real", f"{fv.get('bess_dias_autonomia_real', 0):.2f} días"),
+            ("Consumo crítico diario", f"{fv.get('bess_consumo_critico_diario_kwh', 0):.1f} kWh/día"),
+        ])
+        if fv.get("bess_criterio_dimensionamiento"):
+            _p(doc, f"Criterio: {fv['bess_criterio_dimensionamiento']}", italic=True)
+
+    # ===== 5.4 RESPALDO Y CONEXIÓN A RED =====
+    if inc("respaldo"):
+        _add_heading(doc, "5.4 Respaldo y conexión a red", level=2)
+        _table_kv(doc, [
+            ("Conectado a la red", "Sí" if fv.get("conectado_red") else "No (off-grid)"),
+            ("Tipo de respaldo", fv.get("tipo_respaldo", "—").replace("_", " ").title()),
+            ("Potencia de respaldo", f"{fv.get('respaldo_potencia_kw', 0):.1f} kW"),
+            ("Empalme recomendado", fv.get("empalme_recomendado", "—") or "—"),
+        ])
+        if fv.get("respaldo_descripcion"):
+            _p(doc, fv["respaldo_descripcion"], italic=True)
+
+    # ===== 5.5 LAYOUT =====
+    layout = proyecto.get("layout", {})
+    if inc("layout") and layout.get("n_paneles", 0) > 0:
+        _add_heading(doc, "5.5 Layout y disposición de paneles", level=2)
+        _table_kv(doc, [
+            ("Tipo de montaje", layout.get("tipo_montaje", "—").replace("_", " ").title()),
+            ("N° paneles dispuestos", f"{layout.get('n_paneles', 0)} unidades"),
+            ("N° de filas", f"{layout.get('n_filas', 0)}"),
+            ("Pitch entre filas", f"{layout.get('pitch_m', 0):.2f} m"),
+            ("Potencia real instalable", f"{layout.get('P_kwp_real', 0):.2f} kWp"),
+            ("Área útil disponible", f"{layout.get('area_util_m2', 0):.1f} m²"),
+            ("Aprovechamiento", f"{layout.get('aprovechamiento_pct', 0):.1f} %"),
+        ])
 
     # ===== 6. PROTECCIONES Y SEGURIDAD =====
-    _add_heading(doc, "6. Protecciones Eléctricas y Seguridad", level=1)
-    _add_heading(doc, "6.1 Lado DC", level=2)
-    _p(doc, "Cada string de paneles deberá estar protegido mediante:")
-    for txt in [
-        "Fusibles tipo gPV en serie con cada string, dimensionados según Isc del panel × 1,56",
-        "Interruptor seccionador DC bipolar con capacidad de corte bajo carga",
-        "Descargador de sobretensiones (SPD) tipo II clase II en el string box",
-        "Conductor de protección (PE) continuo desde estructura hasta puesta a tierra",
-    ]:
-        p = doc.add_paragraph(style="List Bullet"); p.add_run(txt).font.size = Pt(10.5)
-    _add_heading(doc, "6.2 Lado AC", level=2)
-    _p(doc, "A la salida del inversor se instalarán:")
-    for txt in [
-        "Interruptor automático magnetotérmico, In dimensionada según corriente nominal del inversor",
-        "Interruptor diferencial superinmunizado, sensibilidad 30 mA tipo A o B según fabricante del inversor",
-        "Descargador de sobretensiones (SPD) tipo II clase II",
-        "Medidor bidireccional para netbilling, suministrado y/o aprobado por la empresa distribuidora",
-    ]:
-        p = doc.add_paragraph(style="List Bullet"); p.add_run(txt).font.size = Pt(10.5)
-    _add_heading(doc, "6.3 Puesta a tierra", level=2)
-    _p(doc, "El sistema fotovoltaico se conectará a la malla de tierra existente del inmueble. "
-       "Si no existe malla adecuada, se construirá una nueva con resistencia de puesta a tierra "
-       "menor o igual a 25 Ω, medida con telurómetro calibrado en el momento de la puesta en "
-       "servicio. La estructura metálica de soporte de los paneles y todas las partes metálicas "
-       "accesibles deben equipotencializarse con conductor de cobre desnudo de sección mínima "
-       "según la corriente de cortocircuito esperada.")
+    if inc("unifilar") or inc("puesta_tierra"):
+        _add_heading(doc, "6. Protecciones Eléctricas y Seguridad", level=1)
+        if inc("unifilar"):
+            _add_heading(doc, "6.1 Lado DC", level=2)
+            _p(doc, "Cada string de paneles deberá estar protegido mediante:")
+            for txt in [
+                "Fusibles tipo gPV en serie con cada string, dimensionados según Isc del panel × 1,56",
+                "Interruptor seccionador DC bipolar con capacidad de corte bajo carga",
+                "Descargador de sobretensiones (SPD) tipo II clase II en el string box",
+                "Conductor de protección (PE) continuo desde estructura hasta puesta a tierra",
+            ]:
+                p = doc.add_paragraph(style="List Bullet"); p.add_run(txt).font.size = Pt(10.5)
+            _add_heading(doc, "6.2 Lado AC", level=2)
+            _p(doc, "A la salida del inversor se instalarán:")
+            for txt in [
+                "Interruptor automático magnetotérmico, In dimensionada según corriente nominal del inversor",
+                "Interruptor diferencial superinmunizado, sensibilidad 30 mA tipo A o B según fabricante del inversor",
+                "Descargador de sobretensiones (SPD) tipo II clase II",
+                "Medidor bidireccional para netbilling, suministrado y/o aprobado por la empresa distribuidora",
+            ]:
+                p = doc.add_paragraph(style="List Bullet"); p.add_run(txt).font.size = Pt(10.5)
+        if inc("puesta_tierra"):
+            _add_heading(doc, "6.3 Puesta a tierra", level=2)
+            _p(doc, "El sistema fotovoltaico se conectará a la malla de tierra existente del inmueble. "
+               "Si no existe malla adecuada, se construirá una nueva con resistencia de puesta a tierra "
+               "menor o igual a 25 Ω, medida con telurómetro calibrado en el momento de la puesta en "
+               "servicio. La estructura metálica de soporte de los paneles y todas las partes metálicas "
+               "accesibles deben equipotencializarse con conductor de cobre desnudo de sección mínima "
+               "según la corriente de cortocircuito esperada.")
 
     # ===== 7. CUMPLIMIENTO NORMATIVO =====
-    _add_heading(doc, "7. Cumplimiento Normativo", level=1)
-    _table_kv(doc, [
-        ("Categoría netbilling", "BT1 ≤ 20 kW (compra obligatoria de excedentes)" if p_kwp <= 20
-                                  else ("Netbilling estándar (20–300 kW)" if not es_pmgd else "PMGD (>300 kW)")),
-        ("Ley aplicable", "Ley 21.118 — Generación Distribuida"),
-        ("Norma técnica eléctrica", "Pliegos Técnicos RIC vigentes (SEC Chile)"),
-        ("Norma anti-isla", "IEEE 1547 / VDE-AR-N 4105 (función nativa del inversor)"),
-        ("Homologación del inversor", "Equipos homologados por SEC con número de certificación vigente"),
-        ("Declaración SEC requerida", "TE-1 (instalador autorizado clase A/B/C/D según potencia y tensión)"),
-        ("Distribuidora", "Trámite de conexión y aprobación según protocolo de la empresa local"),
-    ])
-    if p_kwp >= 20:
-        _spacer(doc, 4)
-        _box_alert(doc, "Memoria explicativa obligatoria",
-                   f"La instalación supera los 20 kW de potencia, por tanto la memoria explicativa "
-                   f"es OBLIGATORIA para el trámite TE-1 ante SEC. Este documento cumple con esa "
-                   f"exigencia. La potencia proyectada es de {p_kwp:.2f} kWp.")
-    if es_pmgd:
-        _spacer(doc, 4)
-        _box_alert(doc, "Régimen PMGD",
-                   f"La potencia ({p_kwp:.2f} kWp) excede los 300 kW del netbilling. El proyecto "
-                   f"debe tramitarse como Pequeño Medio de Generación Distribuida (PMGD), lo que "
-                   f"implica estudios adicionales (calidad de servicio, EIA si > 3 MW, etc.).")
+    if inc("normativa"):
+        _add_heading(doc, "7. Cumplimiento Normativo", level=1)
+        _table_kv(doc, [
+            ("Categoría netbilling", "BT1 ≤ 20 kW (compra obligatoria de excedentes)" if p_kwp <= 20
+                                      else ("Netbilling estándar (20–300 kW)" if not es_pmgd else "PMGD (>300 kW)")),
+            ("Ley aplicable", "Ley 21.118 — Generación Distribuida"),
+            ("Norma técnica eléctrica", "Pliegos Técnicos RIC vigentes (SEC Chile)"),
+            ("Norma anti-isla", "IEEE 1547 / VDE-AR-N 4105 (función nativa del inversor)"),
+            ("Homologación del inversor", "Equipos homologados por SEC con número de certificación vigente"),
+            ("Declaración SEC requerida", "TE-1 (instalador autorizado clase A/B/C/D según potencia y tensión)"),
+            ("Distribuidora", "Trámite de conexión y aprobación según protocolo de la empresa local"),
+        ])
+        if p_kwp >= 20:
+            _spacer(doc, 4)
+            _box_alert(doc, "Memoria explicativa obligatoria",
+                       f"La instalación supera los 20 kW de potencia, por tanto la memoria explicativa "
+                       f"es OBLIGATORIA para el trámite TE-1 ante SEC. Este documento cumple con esa "
+                       f"exigencia. La potencia proyectada es de {p_kwp:.2f} kWp.")
+        if es_pmgd:
+            _spacer(doc, 4)
+            _box_alert(doc, "Régimen PMGD",
+                       f"La potencia ({p_kwp:.2f} kWp) excede los 300 kW del netbilling. El proyecto "
+                       f"debe tramitarse como Pequeño Medio de Generación Distribuida (PMGD), lo que "
+                       f"implica estudios adicionales (calidad de servicio, EIA si > 3 MW, etc.).")
 
     # ===== 8. OPERACIÓN Y MANTENIMIENTO =====
-    _add_heading(doc, "8. Operación y Mantenimiento", level=1)
-    _p(doc, "Para garantizar la vida útil del sistema (mínimo 25 años para los módulos) se "
-       "recomienda el siguiente programa de mantenimiento preventivo:")
-    for txt in [
-        "Limpieza de paneles cada 3 a 6 meses según el nivel de suciedad de la zona (más frecuente en zona norte / agroindustria)",
-        "Inspección visual de cableado, conectores MC4 y sellos de paso de cubierta — anualmente",
-        "Termografía con cámara IR para detectar puntos calientes y mismatch — anualmente",
-        "Verificación del valor de aislación DC y AC con megóhmetro — anualmente",
-        "Medición de la puesta a tierra con telurómetro — anualmente",
-        "Reposición del inversor estimada al año 12 (60% del costo original)",
-        "Reposición de baterías (si aplica) al año 10 para tecnología LFP",
-    ]:
-        p = doc.add_paragraph(style="List Bullet"); p.add_run(txt).font.size = Pt(10.5)
+    if inc("advertencias"):
+        _add_heading(doc, "8. Operación y Mantenimiento", level=1)
+        _p(doc, "Para garantizar la vida útil del sistema (mínimo 25 años para los módulos) se "
+           "recomienda el siguiente programa de mantenimiento preventivo:")
+        for txt in [
+            "Limpieza de paneles cada 3 a 6 meses según el nivel de suciedad de la zona (más frecuente en zona norte / agroindustria)",
+            "Inspección visual de cableado, conectores MC4 y sellos de paso de cubierta — anualmente",
+            "Termografía con cámara IR para detectar puntos calientes y mismatch — anualmente",
+            "Verificación del valor de aislación DC y AC con megóhmetro — anualmente",
+            "Medición de la puesta a tierra con telurómetro — anualmente",
+            "Reposición del inversor estimada al año 12 (60% del costo original)",
+            "Reposición de baterías (si aplica) al año 10 para tecnología LFP",
+        ]:
+            p = doc.add_paragraph(style="List Bullet"); p.add_run(txt).font.size = Pt(10.5)
 
-    # ===== 9. ANEXOS =====
-    _add_heading(doc, "9. Anexos al Proyecto", level=1)
-    _p(doc, "Deben acompañar esta memoria los siguientes documentos:")
-    for txt in [
-        "Plano de implantación del arreglo fotovoltaico (escala 1:50 o 1:100)",
-        "Diagrama unilineal eléctrico del sistema, con identificación de protecciones",
-        "Fichas técnicas (datasheet) de los módulos y del inversor seleccionado",
-        "Certificados de homologación SEC del inversor",
-        "Cálculos de caída de tensión DC y AC",
-        "Protocolo de ensayos: aislación, continuidad de PE, medición de tierra, prueba de funcionamiento",
-        "Foto-fija de la instalación terminada antes de la puesta en servicio",
-    ]:
-        p = doc.add_paragraph(style="List Bullet"); p.add_run(txt).font.size = Pt(10.5)
+        # ===== 9. ANEXOS =====
+        _add_heading(doc, "9. Anexos al Proyecto", level=1)
+        _p(doc, "Deben acompañar esta memoria los siguientes documentos:")
+        for txt in [
+            "Plano de implantación del arreglo fotovoltaico (escala 1:50 o 1:100)",
+            "Diagrama unilineal eléctrico del sistema, con identificación de protecciones",
+            "Fichas técnicas (datasheet) de los módulos y del inversor seleccionado",
+            "Certificados de homologación SEC del inversor",
+            "Cálculos de caída de tensión DC y AC",
+            "Protocolo de ensayos: aislación, continuidad de PE, medición de tierra, prueba de funcionamiento",
+            "Foto-fija de la instalación terminada antes de la puesta en servicio",
+        ]:
+            p = doc.add_paragraph(style="List Bullet"); p.add_run(txt).font.size = Pt(10.5)
 
     # ===== 10. FIRMA =====
     doc.add_page_break()

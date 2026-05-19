@@ -14,6 +14,7 @@ SECCIONES_DISPONIBLES = {
     # Identificación
     "portada_kpis":         "Portada con KPIs principales",
     "resumen_ejecutivo":    "Resumen narrativo en lenguaje ejecutivo",
+    "explicacion_simple":   "Explicación financiera entendible para todos (lenguaje claro + glosario)",
     # Sitio y consumo
     "sitio":                "Ubicación, coordenadas, recurso solar (PVGIS + NASA)",
     "consumo":              "Cargas RIC, recintos, factor demanda y simultaneidad",
@@ -24,6 +25,7 @@ SECCIONES_DISPONIBLES = {
     "bess":                 "Sistema de baterías y autonomía",
     "respaldo":             "Generador / empalme reducido / netbilling",
     "layout":               "Disposición de paneles y aprovechamiento de superficie",
+    "planos_tecnicos":      "Plano arquitectónico + layout de paneles overlay (imprimible)",
     "unifilar":             "Diagrama unifilar con protecciones DC/AC",
     "puesta_tierra":        "Sistema de puesta a tierra (PAT)",
     # Económico
@@ -43,8 +45,8 @@ SECCIONES_DISPONIBLES = {
 # Presets pensados para los 3 contextos de envío al cliente.
 PRESETS = {
     "cliente_final": [
-        "portada_kpis", "resumen_ejecutivo",
-        "fv_dimensionamiento", "generacion_grafica", "layout",
+        "portada_kpis", "resumen_ejecutivo", "explicacion_simple",
+        "fv_dimensionamiento", "generacion_grafica", "layout", "planos_tecnicos",
         "capex", "metricas_economicas", "co2_ambiental",
         "normativa", "advertencias",
     ],
@@ -52,7 +54,7 @@ PRESETS = {
         "portada_kpis", "resumen_ejecutivo",
         "sitio", "consumo", "balance_fases",
         "fv_dimensionamiento", "generacion_grafica",
-        "bess", "respaldo", "layout", "unifilar", "puesta_tierra",
+        "bess", "respaldo", "layout", "planos_tecnicos", "unifilar", "puesta_tierra",
         "capex", "flujo_caja", "metricas_economicas",
         "analisis_tarifario", "comparativa_escenarios",
         "normativa", "advertencias",
