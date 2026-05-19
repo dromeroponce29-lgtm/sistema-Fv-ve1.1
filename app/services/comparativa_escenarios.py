@@ -32,14 +32,19 @@ from app.services.tarifas_chile import (
 )
 
 
-# Defaults editables
+# Defaults editables (actualizados 2026-05-18 según hallazgos auditor)
 TASA_DESCUENTO = 0.08
 HORIZONTE_ANIOS = 25
 PRECIO_CLP_USD = 950
-# Cargos referenciales para BESS adicional (USD/kWh nominal LFP entregado en obra)
+# FIX #3 — Constantes 2026: BESS LFP residencial entregado en obra
 COSTO_BESS_USD_KWH = 320
-# Factor adicional CAPEX FV (inversor, paneles, estructura, instalación) — USD/kWp
-COSTO_FV_USD_KWP = 850
+# FIX #3 — CAPEX FV residencial Chile 2026 (paneles + inversor + estructura + instalación)
+# Reducido de 850 → 720 USD/kWp por baja de precios de paneles y soft costs
+COSTO_FV_USD_KWP = 720
+# FIX #3 — Precio netbilling actualizado: precio nudo + componente energía 2025-2026
+PRECIO_NETBILLING_CLP_KWH = 95   # antes 75, ahora 90-110 CLP/kWh según barra
+# FIX #7 — Fracción del CAPEX FV que se reemplaza al año 12 (inversor)
+FRACCION_REEMPLAZO_INVERSOR = 0.15
 
 
 def _valor_presente(flujo_anual: float, anos: int = HORIZONTE_ANIOS,
@@ -100,10 +105,12 @@ def comparar_3_escenarios(
     # Generador como backup obligatorio en off-grid puro? Asumimos NO (puro = sin gen)
     # OPEX: sólo mantención FV + reemplazo BESS a los 12 años
     mantencion_anual_A = capex_fv * 0.01 + capex_bess_A * 0.015  # 1% FV + 1.5% BESS
-    reemplazo_bess_vp  = capex_bess_A * 0.5 / (1 + TASA_DESCUENTO) ** 12  # 50% reemplazo en año 12
+    reemplazo_bess_vp  = capex_bess_A * 0.5 / (1 + TASA_DESCUENTO) ** 12  # 50% reemplazo BESS año 12
+    # FIX #7 — Reemplazo inversor al año 12 (15% CAPEX FV) descontado a VP
+    reemplazo_inv_vp_A = capex_fv * FRACCION_REEMPLAZO_INVERSOR / (1 + TASA_DESCUENTO) ** 12
     opex_anual_A = round(mantencion_anual_A)
     capex_A = capex_fv + capex_bess_A
-    tco_A = capex_A + _valor_presente(opex_anual_A) + reemplazo_bess_vp
+    tco_A = capex_A + _valor_presente(opex_anual_A) + reemplazo_bess_vp + reemplazo_inv_vp_A
 
     # ───── Escenario B (★): FV + BESS chico + EMPALME MONOFÁSICO ──────────
     # BESS dimensionado para sólo 1 día de cargas críticas (no consumo total)
@@ -124,7 +131,9 @@ def comparar_3_escenarios(
     opex_anual_B = costo_red_B["total_anual_clp"] + round(capex_fv * 0.01 + capex_bess_B * 0.015)
     capex_B = capex_fv + capex_bess_B + capex_empalme_B
     reemplazo_bess_vp_B = capex_bess_B * 0.5 / (1 + TASA_DESCUENTO) ** 12
-    tco_B = capex_B + _valor_presente(opex_anual_B) + reemplazo_bess_vp_B
+    # FIX #7 — Reemplazo inversor al año 12 también en escenario B
+    reemplazo_inv_vp_B = capex_fv * FRACCION_REEMPLAZO_INVERSOR / (1 + TASA_DESCUENTO) ** 12
+    tco_B = capex_B + _valor_presente(opex_anual_B) + reemplazo_bess_vp_B + reemplazo_inv_vp_B
 
     # ───── Escenario C: ON-GRID NETBILLING ────────────────────────────────
     # Sin BESS (o BESS mínimo opcional, dejamos en 0)
@@ -135,19 +144,22 @@ def comparar_3_escenarios(
     amp_C, lbl_C = amperaje_para_potencia(demanda_max_kw, monofasico=monofasico_C)
     capex_empalme_C = costo_instalacion_empalme(amp_C, monofasico=monofasico_C)
     categoria_C = categoria_recomendada(demanda_max_kw, monofasico_C)
-    # Consumo desde red = consumo total - autoconsumo FV (cobertura efectiva instantánea ~70%)
-    autoconsumo_C = consumo_anual_kwh * cobertura_solar * 0.7
-    compra_red_C  = consumo_anual_kwh - autoconsumo_C
-    # Inyección = excedentes FV no consumidos (30% de la generación FV)
+    # FIX #6 — Sin BESS, el autoconsumo instantáneo residencial real es 25-35%
+    # (la mayor parte de la generación FV ocurre a mediodía cuando el consumo es bajo).
+    # Antes el modelo usaba 70% que sobreestima el ahorro y subestima la inyección.
+    AUTOCONSUMO_INSTANTANEO_SIN_BESS = 0.30
     gen_total = consumo_anual_kwh * cobertura_solar
-    inyeccion_C = gen_total * 0.3
-    # Ingreso netbilling: ~$70-90 CLP/kWh (precio energía)
-    PRECIO_NETBILLING_CLP_KWH = 75
+    autoconsumo_C = gen_total * AUTOCONSUMO_INSTANTANEO_SIN_BESS
+    compra_red_C  = consumo_anual_kwh - autoconsumo_C
+    inyeccion_C   = gen_total - autoconsumo_C   # el resto se inyecta a red
+    # Ingreso netbilling Ley 21.118 — precio nudo + componente energía
     ingreso_netbilling = inyeccion_C * PRECIO_NETBILLING_CLP_KWH
     costo_red_C = costo_anual_electricidad(categoria_C, compra_red_C, demanda_max_kw)
     opex_anual_C = round(costo_red_C["total_anual_clp"] - ingreso_netbilling + capex_fv * 0.01)
     capex_C = capex_fv + capex_empalme_C
-    tco_C = capex_C + _valor_presente(opex_anual_C)
+    # FIX #7 — Reemplazo inversor al año 12 (~15% CAPEX FV) descontado a VP
+    reemplazo_inv_vp_C = capex_fv * FRACCION_REEMPLAZO_INVERSOR / (1 + TASA_DESCUENTO) ** 12
+    tco_C = capex_C + _valor_presente(opex_anual_C) + reemplazo_inv_vp_C
 
     # ───── Recomendación: menor TCO ────────────────────────────────────────
     tcos = {"A": tco_A, "B": tco_B, "C": tco_C}

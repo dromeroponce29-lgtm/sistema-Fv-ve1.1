@@ -35,10 +35,11 @@ CategoriaTarifa = Literal["BT1", "BT2", "BT4_punta"]
 # ─── Valores referenciales por defecto (editables) ────────────────────────────
 TARIFAS_DEFAULT = {
     "BT1": {
-        "cargo_fijo_clp_mes":     1800,
+        # FIX #3 — Cargo fijo BT1 actualizado a 2026 (incluye arriendo medidor)
+        "cargo_fijo_clp_mes":     2200,
         "cargo_variable_clp_kwh":  165,
         "potencia_max_kw":          10,
-        "comentario": "Residencial. Cargo fijo + cargo por energía. Sin discriminación horaria.",
+        "comentario": "Residencial baja tensión (hasta 10 kW). Cargo fijo + cargo por energía. Sin discriminación horaria.",
     },
     "BT2": {
         "cargo_fijo_clp_mes":     4500,
@@ -104,12 +105,18 @@ def kw_disponibles_empalme(amperaje: int, monofasico: bool, fp: float = 0.93) ->
 
 
 def categoria_recomendada(P_empalme_kw: float, monofasico: bool) -> CategoriaTarifa:
-    """Recomienda BT1/BT2/BT4 según potencia del empalme."""
-    if monofasico and P_empalme_kw <= 8.5:
-        return "BT1"
+    """Recomienda BT1/BT2/BT4 según potencia del empalme.
+
+    FIX #4 — Pliego SEC permite BT1 también para empalmes trifásicos hasta 10 kW
+    (residencias rurales con bomba de pozo, por ejemplo). La discriminación
+    histórica BT1=mono / BT2=tri ya no aplica: lo que define BT1 es la potencia
+    contratada (≤ 10 kW), no el número de fases.
+    """
+    if P_empalme_kw <= 10:
+        return "BT1"      # residencial baja tensión, mono o tri
     if P_empalme_kw <= 50:
-        return "BT2"
-    return "BT4_punta"
+        return "BT2"      # con potencia contratada
+    return "BT4_punta"    # discriminación horaria, ≥50 kW
 
 
 def costo_anual_electricidad(

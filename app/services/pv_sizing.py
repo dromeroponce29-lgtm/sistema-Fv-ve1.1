@@ -232,7 +232,12 @@ def _dimensionar_respaldo(req, demanda_max_kw: float, P_kwp: float,
     if not req.conectado_red:  # Off-grid
         if req.tipo_respaldo == "generador_diesel":
             # Generador para cubrir demanda crítica cuando BESS no alcanza
-            cons_critico_horario_kw = cons_critico_diario_kwh / req.horas_consumo_critico_dia
+            # FIX #2 — guard división por cero si horas_consumo_critico_dia = 0
+            cons_critico_horario_kw = (
+                cons_critico_diario_kwh / req.horas_consumo_critico_dia
+                if req.horas_consumo_critico_dia and req.horas_consumo_critico_dia > 0
+                else cons_critico_diario_kwh / 12  # fallback: 12 hrs default
+            )
             P_gen = max(demanda_max_kw * fs, cons_critico_horario_kw * 1.5)
             # Escala a tamaños comerciales: 5, 10, 15, 20, 30, 50, 75, 100, 150 kVA (factor 0.8 → kW)
             escala_kva = [5, 10, 15, 20, 30, 50, 75, 100, 150, 200, 250, 350, 500]
