@@ -4338,8 +4338,13 @@ function reporteButton(p, formato, pid, isDemo, backendOk) {
 async function generarReporteEnVivo(projectId, formato) {
   const p = projectById(projectId);
   if (!p) return;
+  // FIX CRITICO — Adjuntar secciones_incluidas si el usuario marcó selección en el menú.
+  // Antes este botón ignoraba la selección y mandaba el proyecto sin filtros, generando
+  // siempre el reporte completo aunque el usuario hubiera marcado solo algunas secciones.
+  const sel = loadSeccionesSel(projectId);
+  const payload = (sel && sel.length > 0) ? { ...p, secciones_incluidas: sel } : p;
   try {
-    await API.downloadReport(formato, p);
+    await API.downloadReport(formato, payload);
   } catch (e) {
     alert("Error al generar reporte: " + e.message);
   }
