@@ -158,12 +158,16 @@ def generar_excel(proyecto: dict, salida: Path | str) -> Path:
         r += 1
         headers = ["Mes"] + MESES
         r = _table_header(ws2, r, headers)
-        r = _table_row(ws2, r, ["E (kWh/kWp) PVGIS"] + s["pvgis"]["monthly_E"], formats=[None]+["0.0"]*12)
-        r = _table_row(ws2, r, ["H(i) (kWh/m²) PVGIS"] + s["pvgis"]["monthly_H"], formats=[None]+["0.0"]*12)
-        # NASA tiene 11 o 12 valores; rellenar a 12 si falta
-        nasa_ghi = list(s["nasa"]["monthly_ghi"]) + [None]*(12-len(s["nasa"]["monthly_ghi"]))
-        nasa_t = list(s["nasa"]["monthly_t"]) + [None]*(12-len(s["nasa"]["monthly_t"]))
-        nasa_w = list(s["nasa"]["monthly_w"]) + [None]*(12-len(s["nasa"]["monthly_w"]))
+        # FIX defensivo — usar .get() con default [] para no fallar si faltan claves opcionales
+        monthly_E = s["pvgis"].get("monthly_E", []) or []
+        monthly_H = s["pvgis"].get("monthly_H", []) or []
+        r = _table_row(ws2, r, ["E (kWh/kWp) PVGIS"] + list(monthly_E) + [None]*(12-len(monthly_E)), formats=[None]+["0.0"]*12)
+        r = _table_row(ws2, r, ["H(i) (kWh/m²) PVGIS"] + list(monthly_H) + [None]*(12-len(monthly_H)), formats=[None]+["0.0"]*12)
+        # NASA tiene 11 o 12 valores; rellenar a 12 si falta. Defensivo: si la clave no existe, lista vacía
+        nasa_ghi = list(s["nasa"].get("monthly_ghi", []) or []) + [None]*12
+        nasa_t   = list(s["nasa"].get("monthly_t", []) or [])   + [None]*12
+        nasa_w   = list(s["nasa"].get("monthly_w", []) or [])   + [None]*12
+        nasa_ghi = nasa_ghi[:12]; nasa_t = nasa_t[:12]; nasa_w = nasa_w[:12]
         r = _table_row(ws2, r, ["GHI (kWh/m²/día) NASA"] + nasa_ghi, formats=[None]+["0.00"]*12)
         r = _table_row(ws2, r, ["T amb (°C) NASA"] + nasa_t, formats=[None]+["0.0"]*12)
         r = _table_row(ws2, r, ["Viento (m/s) NASA"] + nasa_w, formats=[None]+["0.00"]*12)
